@@ -1,16 +1,16 @@
     :root {
-      --bg: #F9F9F7;
+      --bg: #F5F7FA;
       --surface: #FFFFFF;
-      --surface-subtle: #F2F1ED;
-      --border: #E5E3DC;
-      --text-primary: #1F201D;
-      --text-secondary: #5C5E57;
-      --text-muted: #8C8E86;
-      --accent: #2E5A44;
-      --accent-light: #EBF2EE;
-      --accent-hover: #234635;
-      --tag-jp-bg: #EBF2EE;
-      --tag-jp-text: #2E5A44;
+      --surface-subtle: #EDF0F6;
+      --border: #DCE1EC;
+      --text-primary: #1B2130;
+      --text-secondary: #4F566A;
+      --text-muted: #8189A0;
+      --accent: #263964;
+      --accent-light: #E8ECF5;
+      --accent-hover: #1B2A4E;
+      --tag-jp-bg: #E8ECF5;
+      --tag-jp-text: #263964;
       --tag-en-bg: #EEF1F6;
       --tag-en-text: #3B5478;
       --tag-zh-bg: #F7EFE8;
@@ -52,8 +52,15 @@
 
     .brand {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 10px;
+    }
+
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      display: block;
     }
 
     .brand h1 {
@@ -119,7 +126,7 @@
 
     .search-input-box:focus-within {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(46, 90, 68, 0.12);
+      box-shadow: 0 0 0 3px rgba(38, 57, 100, 0.14);
     }
 
     .search-icon {
@@ -588,3 +595,27 @@
     .conj-reading { font-size: 0.78rem; color: var(--text-muted); }
     .conj-note { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; }
     @media (max-width: 520px) { .conj-label { flex-basis: 7.5em; font-size: 0.74rem; } }
+
+
+    /* ===== 活用形還原說明／切換連結 ===== */
+    .infl-note { font-size: 0.82rem; background: var(--tag-en-bg); color: var(--tag-en-text); padding: 7px 11px; border-radius: 8px; margin: 10px 0 4px; line-height: 1.5; font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif; }
+    .alt-link { display: block; background: none; border: none; color: var(--accent); font-size: 0.85rem; cursor: pointer; padding: 2px 0 12px; font-family: inherit; text-decoration: underline; text-underline-offset: 3px; text-align: left; }
+    .alt-link:hover { color: var(--accent-hover); }
+
+
+    /* ===== 結果分組、詳細頁對應形態 ===== */
+    .group-label { grid-column: 1 / -1; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin: 10px 0 -2px; }
+    .group-label:first-child { margin-top: 0; }
+    .detail-hit { margin-top: 12px; font-size: 0.85rem; background: var(--tag-en-bg); color: var(--tag-en-text); padding: 8px 12px; border-radius: 8px; line-height: 1.6; font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif; }
+    .hit-jump { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; font-family: inherit; padding: 0 0 0 6px; }
+    .conj-row.conj-hit { background: var(--tag-en-bg); }
+    .hit-badge { display: inline-block; margin-left: 6px; font-size: 0.68rem; padding: 1px 6px; border-radius: 6px; background: var(--accent); color: #fff; vertical-align: middle; }
+
+
+    /* ===== 圖示分頁（收藏、歷史）===== */
+    .tab-btn.icon-tab { padding: 7px 11px; }
+    .tab-btn.icon-tab.push-right { margin-left: auto; }
+    .tab-btn.icon-tab .badge { font-size: 0.7rem; padding: 0 6px; }
+    .tab-btn.icon-tab svg { flex-shrink: 0; }
+    .featured-label { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin: 18px 0 10px; }
+    .featured-label:first-child { margin-top: 0; }

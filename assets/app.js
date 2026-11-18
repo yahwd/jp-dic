@@ -15,24 +15,79 @@
     const favCountEl = document.getElementById('favCount');
     const histCountEl = document.getElementById('histCount');
 
+    // 版本號需與 sw.js 的 CACHE_NAME 相同；更換 data 檔案後兩邊一起加 1
+    const CACHE_NAME = 'yukiyosei-v1';
+
+    function formatMB(bytes) {
+      return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    // 先查本機快取，沒有才下載並存起來；第一次載入後即可離線使用
+    async function fetchDataCached(url) {
+      if ('caches' in window) {
+        try {
+          const cache = await caches.open(CACHE_NAME);
+          const hit = await cache.match(url);
+          if (hit) return { res: hit, fromCache: true };
+          const res = await fetch(url);
+          if (res.ok) cache.put(url, res.clone()).catch(() => {});
+          return { res, fromCache: false };
+        } catch (e) { /* 快取不可用時改走一般下載 */ }
+      }
+      return { res: await fetch(url), fromCache: false };
+    }
+
+    async function readJsonWithProgress(res, onProgress) {
+      if (!res.body || !res.body.getReader) return res.json();
+      const reader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        onProgress(received);
+      }
+      return JSON.parse(await new Blob(chunks).text());
+    }
+
+    const nextPaint = () => new Promise(r => setTimeout(r, 30));
+
     async function loadDatabase() {
       const dot = document.getElementById('statusDot');
       const txt = document.getElementById('statusText');
       try {
-        const [dictRes, bridgeRes] = await Promise.all([
-          fetch('./data/dict_all.json'),
-          fetch('./data/zh_bridge.json')
-        ]);
-        if (!dictRes.ok) throw new Error('dict_all.json fetch failed');
-        dictData = await dictRes.json();
-        if (bridgeRes.ok) {
-          zhBridge = await bridgeRes.json();
-        }
+        txt.textContent = '正在讀取詞庫...';
+        const first = await fetchDataCached('./data/dict_all.json');
+        if (!first.res.ok) throw new Error('dict_all.json fetch failed');
+        const bridgeP = fetchDataCached('./data/zh_bridge.json').catch(() => null);
+
+        const label = first.fromCache ? '讀取本機詞庫' : '首次下載詞庫（之後可離線使用）';
+        dictData = await readJsonWithProgress(first.res, (n) => {
+          txt.textContent = `${label}… ${formatMB(n)}`;
+        });
+        txt.textContent = '解析詞庫中...';
+        await nextPaint();
+
+        const bridge = await bridgeP;
+        if (bridge && bridge.res.ok) zhBridge = await bridge.res.json();
+
         isDbReady = true;
         dot.className = 'status-dot';
-        txt.textContent = `完整詞庫已就緒 (${dictData.length.toLocaleString()} 詞)`;
+        txt.textContent = `詞庫已就緒 (${dictData.length.toLocaleString()} 詞)${'caches' in window ? ' · 可離線使用' : ''}`;
         document.getElementById('localLoaderBanner').style.display = 'none';
         renderCurrentView();
+
+        // 要求瀏覽器不要自動清掉這份快取，並清除舊版本
+        try {
+          if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+          if ('caches' in window) {
+            caches.keys().then(keys => keys
+              .filter(k => k.startsWith('yukiyosei-') && k !== CACHE_NAME)
+              .forEach(k => caches.delete(k)));
+          }
+        } catch (e) {}
       } catch (err) {
         dot.className = 'status-dot error';
         txt.textContent = '請選取 data 資料夾檔案';
@@ -356,17 +411,402 @@
     }
 
 
+
+    // ===== 假名轉換 =====
+    function toKatakana(str) {
+      return str.replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    }
+    function toHiragana(str) {
+      return str.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    }
+    function kanaVariants(q) {
+      const v = new Set([q]);
+      if (/^[\u3041-\u3096ー]+$/.test(q)) v.add(toKatakana(q));
+      else if (/^[\u30A1-\u30F6ー]+$/.test(q)) v.add(toHiragana(q));
+      return [...v];
+    }
+
+    // ===== 羅馬拼音 -> 平假名 =====
+    const ROMA = {};
+    (function buildRoma() {
+      const V = 'aiueo';
+      'あいうえお'.split('').forEach((k, i) => { ROMA[V[i]] = k; });
+      const rows = {
+        k: 'かきくけこ', s: 'さしすせそ', t: 'たちつてと', n: 'なにぬねの', h: 'はひふへほ',
+        m: 'まみむめも', r: 'らりるれろ', g: 'がぎぐげご', z: 'ざじずぜぞ', d: 'だぢづでど',
+        b: 'ばびぶべぼ', p: 'ぱぴぷぺぽ'
+      };
+      Object.keys(rows).forEach(c => rows[c].split('').forEach((k, i) => { ROMA[c + V[i]] = k; }));
+      ROMA.ya = 'や'; ROMA.yu = 'ゆ'; ROMA.yo = 'よ'; ROMA.wa = 'わ'; ROMA.wo = 'を';
+      ROMA.shi = 'し'; ROMA.chi = 'ち'; ROMA.tsu = 'つ'; ROMA.fu = 'ふ'; ROMA.ji = 'じ';
+      const small = { a: 'ゃ', u: 'ゅ', o: 'ょ', e: 'ぇ' };
+      [['ky', 'き'], ['gy', 'ぎ'], ['sh', 'し'], ['sy', 'し'], ['ch', 'ち'], ['cy', 'ち'], ['ty', 'ち'],
+       ['ny', 'に'], ['hy', 'ひ'], ['my', 'み'], ['ry', 'り'], ['by', 'び'], ['py', 'ぴ'],
+       ['j', 'じ'], ['jy', 'じ'], ['zy', 'じ'], ['dy', 'ぢ']].forEach(([pre, base]) => {
+        Object.keys(small).forEach(v => {
+          const key = pre + v;
+          // 'ja','ju','jo' 是じゃ/じゅ/じょ；'je' 是じぇ
+          ROMA[key] = base + small[v];
+        });
+      });
+      ROMA.fa = 'ふぁ'; ROMA.fi = 'ふぃ'; ROMA.fe = 'ふぇ'; ROMA.fo = 'ふぉ';
+    })();
+
+    function romajiToKana(input) {
+      let s = input.toLowerCase().trim();
+      if (s.length < 2 || /[^a-zāīūēō'\-]/.test(s)) return null;
+      s = s.replace(/ā/g, 'aa').replace(/ī/g, 'ii').replace(/ū/g, 'uu').replace(/ē/g, 'ee').replace(/ō/g, 'ou');
+      s = s.replace(/-/g, '');
+      if (!s) return null;
+      let out = '';
+      let i = 0;
+      while (i < s.length) {
+        const c = s[i];
+        const nx = s[i + 1];
+        if (c === "'") { i++; continue; }
+        if (c === 'n') {
+          if (nx === "'") { out += 'ん'; i += 2; continue; }
+          if (nx === undefined || !/[aiueoy]/.test(nx)) { out += 'ん'; i++; continue; }
+        }
+        // 促音：子音重複（不含 n），以及 tch
+        if (nx && c === nx && /[bcdfghjkmpqrstvwxyz]/.test(c)) { out += 'っ'; i++; continue; }
+        if (c === 't' && s.startsWith('tch', i)) { out += 'っ'; i++; continue; }
+        let matched = false;
+        for (const len of [3, 2, 1]) {
+          const sub = s.substr(i, len);
+          if (sub.length === len && ROMA[sub]) { out += ROMA[sub]; i += len; matched = true; break; }
+        }
+        if (!matched) return null;
+      }
+      return out;
+    }
+
+    // ===== 活用形還原 =====
+    const RANUKI = '去ら詞（口語可能形）';
+    const RULES = [];
+    function R(from, to, inT, outT, label, needTag) {
+      RULES.push({ from, to, inT, outT, label, needTag });
+    }
+    const FIN = ['*'];          // 只用在表面形
+    const DER = ['*', 'v1'];    // 也可用在已還原一層的一段動詞（可能／被動／使役…）
+    const TEI = ['*', 'te'];    // て形或「ている」等複合形
+    const ADJ = ['*', 'adji'];
+
+    (function buildRules() {
+      // --- 一段動詞 ---
+      R('ない', 'る', FIN, 'v1', 'ない形（否定）');
+      R('なかった', 'る', FIN, 'v1', 'なかった形（過去否定）');
+      R('ます', 'る', FIN, 'v1', 'ます形（禮貌）');
+      R('ました', 'る', FIN, 'v1', 'ました（禮貌過去）');
+      R('ません', 'る', FIN, 'v1', 'ません（禮貌否定）');
+      R('ませんでした', 'る', FIN, 'v1', 'ませんでした（禮貌過去否定）');
+      R('た', 'る', FIN, 'v1', 'た形（過去）');
+      R('て', 'る', TEI, 'v1', 'て形');
+      R('れば', 'る', FIN, 'v1', 'ば形（假設）');
+      R('よう', 'る', FIN, 'v1', '意志形');
+      R('ろ', 'る', FIN, 'v1', '命令形');
+      R('られる', 'る', DER, 'v1', '可能／被動形');
+      R('させる', 'る', DER, 'v1', '使役形');
+      R('させられる', 'る', DER, 'v1', '使役被動形');
+      R('たい', 'る', ADJ, 'v1', 'たい形（想…）');
+
+      // --- 五段動詞 ---
+      const G = [
+        ['う', 'わ', 'い', 'え', 'お', 'って', 'った'],
+        ['く', 'か', 'き', 'け', 'こ', 'いて', 'いた'],
+        ['ぐ', 'が', 'ぎ', 'げ', 'ご', 'いで', 'いだ'],
+        ['す', 'さ', 'し', 'せ', 'そ', 'して', 'した'],
+        ['つ', 'た', 'ち', 'て', 'と', 'って', 'った'],
+        ['ぬ', 'な', 'に', 'ね', 'の', 'んで', 'んだ'],
+        ['ぶ', 'ば', 'び', 'べ', 'ぼ', 'んで', 'んだ'],
+        ['む', 'ま', 'み', 'め', 'も', 'んで', 'んだ'],
+        ['る', 'ら', 'り', 'れ', 'ろ', 'って', 'った']
+      ];
+      G.forEach(([u, a, i, e, o, te, ta]) => {
+        R(a + 'ない', u, FIN, 'v5', 'ない形（否定）');
+        R(a + 'なかった', u, FIN, 'v5', 'なかった形（過去否定）');
+        R(i + 'ます', u, FIN, 'v5', 'ます形（禮貌）');
+        R(i + 'ました', u, FIN, 'v5', 'ました（禮貌過去）');
+        R(i + 'ません', u, FIN, 'v5', 'ません（禮貌否定）');
+        R(i + 'ませんでした', u, FIN, 'v5', 'ませんでした（禮貌過去否定）');
+        R(i + 'たい', u, ADJ, 'v5', 'たい形（想…）');
+        R(e + 'ば', u, FIN, 'v5', 'ば形（假設）');
+        R(o + 'う', u, FIN, 'v5', '意志形');
+        R(e, u, FIN, 'v5', '命令形');
+        R(te, u, TEI, 'v5', 'て形');
+        R(ta, u, FIN, 'v5', 'た形（過去）');
+        R(a + 'れる', u, DER, 'v5', '被動形');
+        R(a + 'せる', u, DER, 'v5', '使役形');
+        R(e + 'る', u, DER, 'v5', '可能形');
+        R(a + 'せられる', u, DER, 'v5', '使役被動形');
+        if (u !== 'す') R(a + 'される', u, DER, 'v5', '使役被動形');
+      });
+      // 特殊五段：行く、問う、ある型（いらっしゃる等）
+      R('って', 'く', TEI, 'v5', 'て形', 'v5k-s');
+      R('った', 'く', FIN, 'v5', 'た形（過去）', 'v5k-s');
+      R('うて', 'う', TEI, 'v5', 'て形', 'v5u-s');
+      R('うた', 'う', FIN, 'v5', 'た形（過去）', 'v5u-s');
+      R('います', 'る', FIN, 'v5', 'ます形（禮貌）', 'v5aru');
+      R('いました', 'る', FIN, 'v5', 'ました（禮貌過去）', 'v5aru');
+      R('いません', 'る', FIN, 'v5', 'ません（禮貌否定）', 'v5aru');
+      R('いませんでした', 'る', FIN, 'v5', 'ませんでした（禮貌過去否定）', 'v5aru');
+
+      // --- する／来る ---
+      [['しない', 'ない形（否定）'], ['しなかった', 'なかった形（過去否定）'], ['します', 'ます形（禮貌）'],
+       ['しました', 'ました（禮貌過去）'], ['しません', 'ません（禮貌否定）'],
+       ['しませんでした', 'ませんでした（禮貌過去否定）'], ['した', 'た形（過去）'], ['すれば', 'ば形（假設）'],
+       ['しよう', '意志形'], ['しろ', '命令形']].forEach(([f, l]) => R(f, 'する', FIN, 'vs', l));
+      R('して', 'する', TEI, 'vs', 'て形');
+      R('したい', 'する', ADJ, 'vs', 'たい形（想…）');
+      R('できる', 'する', FIN, 'vs', '可能形');
+      R('される', 'する', FIN, 'vs', '被動形');
+      R('させる', 'する', FIN, 'vs', '使役形');
+
+      [['こ', 'き', 'く'], ['来', '来', '来']].forEach(([ko, ki, ku]) => {
+        R(ko + 'ない', ku + 'る', FIN, 'vk', 'ない形（否定）');
+        R(ko + 'なかった', ku + 'る', FIN, 'vk', 'なかった形（過去否定）');
+        R(ki + 'ます', ku + 'る', FIN, 'vk', 'ます形（禮貌）');
+        R(ki + 'ました', ku + 'る', FIN, 'vk', 'ました（禮貌過去）');
+        R(ki + 'ません', ku + 'る', FIN, 'vk', 'ません（禮貌否定）');
+        R(ki + 'た', ku + 'る', FIN, 'vk', 'た形（過去）');
+        R(ki + 'て', ku + 'る', TEI, 'vk', 'て形');
+        R(ku + 'れば', ku + 'る', FIN, 'vk', 'ば形（假設）');
+        R(ko + 'よう', ku + 'る', FIN, 'vk', '意志形');
+        R(ko + 'い', ku + 'る', FIN, 'vk', '命令形');
+        R(ko + 'られる', ku + 'る', FIN, 'vk', '可能／被動形');
+        R(ko + 'させる', ku + 'る', FIN, 'vk', '使役形');
+        R(ki + 'たい', ku + 'る', ADJ, 'vk', 'たい形（想…）');
+      });
+
+      // --- い形容詞 ---
+      R('くない', 'い', FIN, 'adji', '否定');
+      R('くなかった', 'い', FIN, 'adji', '過去否定');
+      R('かった', 'い', FIN, 'adji', '過去');
+      R('くて', 'い', FIN, 'adji', 'て形');
+      R('く', 'い', FIN, 'adji', '副詞形');
+      R('ければ', 'い', FIN, 'adji', 'ば形（假設）');
+      R('さ', 'い', FIN, 'adji', '名詞化（…度）');
+      R('かったです', 'い', FIN, 'adji', '禮貌過去');
+      R('くありません', 'い', FIN, 'adji', '禮貌否定');
+      R('です', '', FIN, 'adji', '禮貌');
+
+      // --- 複合形：て形 + 補助動詞（ている、てしまう…）→ 先還原成 て形 ---
+      const AUX = [
+        ['いる', 'いる', 'ている（進行／持續）'], ['います', 'います', 'ている（進行／持續）'],
+        ['いた', 'いた', 'ていた（過去進行）'], ['いました', 'いました', 'ていた（過去進行）'],
+        ['いない', 'いない', 'ていない（尚未／沒在…）'], ['いません', 'いません', 'ていない（尚未／沒在…）'],
+        ['いなかった', 'いなかった', 'ていない（尚未／沒在…）'],
+        ['る', 'る', 'ている（口語）'], ['た', 'た', 'ていた（口語）'], ['ない', 'ない', 'ていない（口語）'],
+        ['ます', 'ます', 'ている（口語）'], ['ました', 'ました', 'ていた（口語）'],
+        ['みる', 'みる', 'てみる（試著…）'], ['みた', 'みた', 'てみる（試著…）'],
+        ['みます', 'みます', 'てみる（試著…）'], ['みました', 'みました', 'てみる（試著…）'],
+        ['おく', 'おく', 'ておく（先…好）'], ['おいた', 'おいた', 'ておく（先…好）'],
+        ['おきます', 'おきます', 'ておく（先…好）'],
+        ['しまう', 'しまう', 'てしまう（…掉／完了）'], ['しまった', 'しまった', 'てしまう（…掉／完了）'],
+        ['しまいます', 'しまいます', 'てしまう（…掉／完了）'], ['しまいました', 'しまいました', 'てしまう（…掉／完了）'],
+        ['いく', 'いく', 'ていく'], ['いった', 'いった', 'ていく'], ['いきます', 'いきます', 'ていく'],
+        ['くる', 'くる', 'てくる'], ['きた', 'きた', 'てくる'], ['きます', 'きます', 'てくる'],
+        ['ください', 'ください', 'てください（請…）']
+      ];
+      ['て', 'で'].forEach(t => AUX.forEach(([suf, , label]) => R(t + suf, t, FIN, 'te', label)));
+      [['ちゃう', 'て'], ['ちゃった', 'て'], ['ちゃいます', 'て'], ['じゃう', 'で'], ['じゃった', 'で'], ['じゃいます', 'で']]
+        .forEach(([f, t]) => R(f, t, FIN, 'te', 'ちゃう（口語：…掉）'));
+
+      // --- 敬語命令形（ください、なさい、いらっしゃい…）與「なさい」 ---
+      R('い', 'る', FIN, 'v5', '命令形（敬語）', 'v5aru');
+      R('なさい', 'る', FIN, 'v1', 'なさい形（請…）');
+      G.forEach(([u, a, i]) => R(i + 'なさい', u, FIN, 'v5', 'なさい形（請…）'));
+      R('しなさい', 'する', FIN, 'vs', 'なさい形（請…）');
+      R('きなさい', 'くる', FIN, 'vk', 'なさい形（請…）');
+      R('来なさい', '来る', FIN, 'vk', 'なさい形（請…）');
+
+      // --- 去ら詞：食べれる（正式為 食べられる）---
+      R('れる', 'る', DER, 'v1', RANUKI);
+      R('これる', 'くる', FIN, 'vk', RANUKI);
+      R('来れる', '来る', FIN, 'vk', RANUKI);
+
+      // --- な形容詞：變化的其實是後面的「だ」，這裡還原到詞幹 ---
+      [['だった', '＋だ的過去（…だった）'], ['ではなかった', '＋だ的過去否定'], ['じゃなかった', '＋だ的過去否定'],
+       ['ではない', '＋だ的否定'], ['じゃない', '＋だ的否定'], ['ではありません', '＋です的否定'],
+       ['でした', '＋です的過去'], ['です', '＋です（禮貌）'], ['だ', '＋だ（斷定）'], ['で', '＋で（て形）'],
+       ['に', '＋に（副詞形）'], ['な', '＋な（修飾名詞）'], ['なら', '＋なら（假設）'], ['さ', '名詞化（…度）']]
+        .forEach(([f, l]) => R(f, '', FIN, 'adjna', l));
+    })();
+
+    function inflectionExtra(inf) {
+      if (inf.path.includes(RANUKI)) {
+        const b = inf.base;
+        const formal = b.endsWith('くる') ? b.slice(0, -2) + 'こられる' : b.slice(0, -1) + 'られる';
+        return `（正式寫法：${formal}）`;
+      }
+      return '';
+    }
+
+    function deinflect(q) {
+      const found = [];
+      const seen = new Set();
+      const queue = [{ str: q, type: '*', path: [], needTag: null }];
+      while (queue.length) {
+        const st = queue.shift();
+        if (st.path.length >= 4) continue;
+        for (let r = 0; r < RULES.length; r++) {
+          const rule = RULES[r];
+          if (!st.str.endsWith(rule.from)) continue;
+          if (!rule.inT.includes(st.type)) continue;
+          const ns = st.str.slice(0, st.str.length - rule.from.length) + rule.to;
+          if (!ns) continue;
+          const key = ns + '|' + rule.outT + '|' + (rule.needTag || st.needTag || '');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const nst = { str: ns, type: rule.outT, path: [...st.path, rule.label], needTag: rule.needTag || st.needTag };
+          found.push(nst);
+          queue.push(nst);
+        }
+      }
+      return found;
+    }
+
+    const V5END = { 'v5u': 'う', 'v5u-s': 'う', 'v5k': 'く', 'v5k-s': 'く', 'v5g': 'ぐ', 'v5s': 'す', 'v5t': 'つ',
+      'v5n': 'ぬ', 'v5b': 'ぶ', 'v5m': 'む', 'v5r': 'る', 'v5r-i': 'る', 'v5aru': 'る', 'v5uru': 'る' };
+
+    function entryTagSet(entry) {
+      const t = new Set();
+      entry[3].forEach(sn => (sn.p || []).forEach(x => t.add(x)));
+      return t;
+    }
+
+    function inflectionPosOk(tags, cand, form) {
+      if (cand.needTag && !tags.has(cand.needTag)) return false;
+      switch (cand.type) {
+        case 'v1': return form.endsWith('る') && (tags.has('v1') || tags.has('v1-s'));
+        case 'v5': {
+          const last = form.slice(-1);
+          for (const t of tags) if (V5END[t] === last) return true;
+          return false;
+        }
+        case 'vk': return (form.endsWith('くる') || form.endsWith('来る')) && tags.has('vk');
+        case 'adji': return form.endsWith('い') && (tags.has('adj-i') || tags.has('adj-ix'));
+        case 'adjna': return tags.has('adj-na');
+        case 'vs':
+          if (form.endsWith('する')) return tags.has('vs-i') || tags.has('vs-s');
+          return tags.has('vs');
+      }
+      return false;
+    }
+
+    // 先由輸入字產生「可能的原形」對照表；之後在掃描詞庫時順便比對
+    function buildInflectionMap(q) {
+      if (q.length < 2) return null;
+      const cands = deinflect(q).filter(c => ['v1', 'v5', 'vs', 'vk', 'adji', 'adjna'].includes(c.type));
+      if (!cands.length) return null;
+      const map = new Map();
+      const add = (k, c) => { if (!map.has(k)) map.set(k, []); map.get(k).push(c); };
+      cands.forEach(c => {
+        add(c.str, c);
+        if (c.type === 'vs' && c.str.endsWith('する') && c.str.length > 2) add(c.str.slice(0, -2), c);
+      });
+      return map;
+    }
+
+    // 回傳 { entry, path, base }（同一詞條只保留最短路徑），沒有命中回傳 null
+    function matchInflection(entry, map) {
+      let best = null;
+      let tags = null;
+      for (let part = 0; part < 2; part++) {
+        const forms = entry[part];
+        for (let f = 0; f < forms.length; f++) {
+          const list = map.get(forms[f]);
+          if (!list) continue;
+          if (!tags) tags = entryTagSet(entry);
+          for (let c = 0; c < list.length; c++) {
+            const cand = list[c];
+            if (inflectionPosOk(tags, cand, forms[f]) && (!best || cand.path.length < best.path.length)) {
+              best = { entry, path: cand.path, base: forms[f] };
+            }
+          }
+        }
+      }
+      return best;
+    }
+
+    // ===== 日文（假名／漢字）搜尋：含平片假名互通與活用形還原 =====
+    function searchJapaneseText(q, meta) {
+      meta = meta || {};
+      const variants = kanaVariants(q);
+      const v0 = variants[0];
+      const v1 = variants[1];
+      const infMap = buildInflectionMap(q);
+      const exact = [], prefix = [], partial = [], deHits = [];
+
+      const hasForm = (arr, v) => arr.includes(v);
+      for (let i = 0; i < dictData.length; i++) {
+        const entry = dictData[i];
+        const kanjis = entry[0];
+        const kanas = entry[1];
+        if (hasForm(kanjis, v0) || hasForm(kanas, v0) || (v1 && (hasForm(kanjis, v1) || hasForm(kanas, v1)))) {
+          exact.push(entry);
+          continue;
+        }
+        if (infMap) {
+          const hit = matchInflection(entry, infMap);
+          if (hit) { deHits.push(hit); continue; }
+        }
+        let isPrefix = false;
+        for (let k = 0; k < kanjis.length && !isPrefix; k++) isPrefix = kanjis[k].startsWith(v0) || (v1 && kanjis[k].startsWith(v1));
+        for (let k = 0; k < kanas.length && !isPrefix; k++) isPrefix = kanas[k].startsWith(v0) || (v1 && kanas[k].startsWith(v1));
+        if (isPrefix) { prefix.push(entry); continue; }
+        if (partial.length < 40) {
+          let isPart = false;
+          for (let k = 0; k < kanjis.length && !isPart; k++) isPart = kanjis[k].includes(v0) || (v1 && kanjis[k].includes(v1));
+          for (let k = 0; k < kanas.length && !isPart; k++) isPart = kanas[k].includes(v0) || (v1 && kanas[k].includes(v1));
+          if (isPart) partial.push(entry);
+        }
+      }
+      const byCommonThenShort = (a, b) => (b[2] - a[2]) || ((a[1][0] || '').length - (b[1][0] || '').length);
+      exact.sort(byCommonThenShort);
+      prefix.sort(byCommonThenShort);
+      partial.sort((a, b) => b[2] - a[2]);
+      deHits.sort((a, b) => (b.entry[2] - a.entry[2]) || (a.path.length - b.path.length) || (b.entry[3].length - a.entry[3].length));
+      let deTop = deHits.slice(0, 20);
+      // 全平假名時同音詞很多：優先只留常用詞（至少保留 3 筆），避免雜訊
+      if (/^[\u3041-\u3096ー]+$/.test(q) && deTop.length > 4) {
+        const common = deTop.filter(h => h.entry[2]);
+        deTop = (common.length >= 3 ? common : deTop.slice(0, 3)).slice(0, 8);
+      }
+
+      const inflections = new Map();
+      deTop.forEach(h => inflections.set(h.entry, { surface: q, base: h.base, path: h.path }));
+
+      const results = [
+        ...exact.slice(0, 50),
+        ...deTop.map(h => h.entry),
+        ...prefix,
+        ...partial
+      ].slice(0, 60);
+
+      const bases = [...new Set(deTop.map(h => h.base))].slice(0, 3);
+      let note = meta.romaji ? `羅馬拼音「${meta.romaji}」→ ${q}` : `直接比對日文讀音與表記「${q}」`;
+      let badge = meta.romaji ? '羅馬拼音 → 日文' : '日文假名檢索';
+      if (deTop.length > 0) {
+        note += `；偵測到變化形，還原為 ${bases.join('、')}`;
+        if (exact.length === 0) badge = '活用形還原';
+      }
+      return { mode: 'jp', badge, note, results, inflections, exactCount: exact.length };
+    }
+
     // 英文搜尋：釋義完全等於輸入字的詞優先（eat → 食べる），再依詞性順序、常用度排序
     function searchEnglish(q, qLower) {
       const escaped = qLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const wordRegex = new RegExp(`\\b${escaped}\\b`);
       const toForm = `to ${qLower}`;
       const scored = [];
+      let strong = 0;
 
       for (let i = 0; i < dictData.length; i++) {
         const entry = dictData[i];
         const senses = entry[3];
         let best = 0;
+        let strongEntry = false;
         for (let j = 0; j < senses.length; j++) {
           const glosses = senses[j].g;
           for (let k = 0; k < glosses.length; k++) {
@@ -383,12 +823,14 @@
             } else {
               sc = 8;                                     // 只是字串包含
             }
+            if (sc >= 30) strongEntry = true;
             if (sc >= 60 && gClean !== gLow.trim()) sc -= 15; // 帶括號補充（如 go (board game)）略降
             sc -= Math.min(j, 6) * 4 + Math.min(k, 4);    // 越前面的釋義越重要
             sc -= Math.min(glosses.length - 1, 4);        // 該義項釋義越精簡越準
             if (sc > best) best = sc;
           }
         }
+        if (strongEntry) strong++;
         if (best > 0) {
           if (entry[2]) best += 25;                       // 常用詞加分
           best -= Math.min(senses.length, 10) * 0.5;      // 義項太多的多義詞略降
@@ -401,11 +843,13 @@
         mode: 'en',
         badge: '英文 → 日文與發音',
         note: `搜尋英文釋義包含「${q}」的日文單字（完全相同的釋義排最前面）`,
-        results: scored.slice(0, 50).map(x => x[1])
+        results: scored.slice(0, 50).map(x => x[1]),
+        strong
       };
     }
 
-    function executeSmartSearch(rawQuery) {
+    function executeSmartSearch(rawQuery, opts) {
+      opts = opts || {};
       const q = rawQuery.trim();
       if (!q || !isDbReady) return { mode: 'empty', results: [], note: '' };
       const qLower = q.toLowerCase();
@@ -416,38 +860,26 @@
         if (info) return searchNumber(q, info);
       }
 
-      // 1. 日文假名或混合假名漢字 -> 直接比對日文
+      // 1. 日文假名或混合假名漢字 -> 直接比對日文（含平片假名互通、活用形還原）
       if (hasKana(q)) {
-        const exact = [];
-        const prefix = [];
-        const partial = [];
-        for (let i = 0; i < dictData.length; i++) {
-          const entry = dictData[i];
-          const kanjis = entry[0];
-          const kanas = entry[1];
-          if (kanjis.includes(q) || kanas.includes(q)) {
-            exact.push(entry);
-          } else if (kanjis.some(k => k.startsWith(q)) || kanas.some(r => r.startsWith(q))) {
-            prefix.push(entry);
-          } else if (partial.length < 40 && (kanjis.some(k => k.includes(q)) || kanas.some(r => r.includes(q)))) {
-            partial.push(entry);
-          }
-          if (exact.length >= 50) break;
-        }
-        exact.sort((a, b) => b[2] - a[2]);
-        prefix.sort((a, b) => b[2] - a[2]);
-        partial.sort((a, b) => b[2] - a[2]);
-        return {
-          mode: 'jp',
-          badge: '日文假名檢索',
-          note: `直接比對日文讀音與表記「${q}」`,
-          results: [...exact, ...prefix, ...partial].slice(0, 50)
-        };
+        return searchJapaneseText(q);
       }
 
       // 2. 純英文 -> 搜尋英文釋義 -> 顯示對應日文與假名發音
       if (isAsciiEnglish(q)) {
-        return searchEnglish(q, qLower);
+        const en = searchEnglish(q, qLower);
+        const kana = opts.noRomaji ? null : romajiToKana(q);
+        if (!kana) return en;
+        const jp = searchJapaneseText(kana, { romaji: q });
+        if (jp.results.length === 0) return en;
+        if (opts.forceRomaji || en.strong === 0 || (en.strong <= 10 && jp.exactCount > 0)) {
+          // 羅馬拼音為主；若英文也有明確釋義，提供切回英文的連結
+          if (en.strong > 0) jp.alt = { label: `改搜英文「${q}」`, opts: { noRomaji: true } };
+          return jp;
+        }
+        // 英文為主；同時可能是羅馬拼音，提供切換連結
+        en.alt = { label: `也可能是羅馬拼音「${kana}」→ 點此改搜日文讀音`, opts: { forceRomaji: true } };
+        return en;
       }
 
       // 3. 漢字輸入 -> 優先檢查日文漢字；若日文無此漢字 -> 當作中文透過英文橋接反查日文
@@ -769,9 +1201,12 @@
     let currentDetail = null;
     let savedScrollY = 0;
 
-    function openDetail(entry) {
+    let currentDetailInf = null;
+
+    function openDetail(entry, inf) {
       savedScrollY = window.scrollY;
       currentDetail = entry;
+      currentDetailInf = inf || null;
       try { history.pushState({ detail: true }, ''); } catch (e) {}
       renderCurrentView();
       window.scrollTo(0, 0);
@@ -780,6 +1215,7 @@
     function closeDetail() {
       if (!currentDetail) return false;
       currentDetail = null;
+      currentDetailInf = null;
       try { if (history.state && history.state.detail) history.replaceState(null, ''); } catch (e) {}
       return true;
     }
@@ -794,7 +1230,7 @@
 
     const SPEAKER_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>';
 
-    function renderDetailPage(entry) {
+    function renderDetailPage(entry, inf) {
       const [kanjis, kanas, isCommon, senses, zhs] = entry;
       const primaryWord = kanjis.length > 0 ? kanjis[0] : kanas[0];
       const primaryReading = kanas[0] || '';
@@ -826,6 +1262,14 @@
       }).join('');
 
       const conj = buildConjugation(entry);
+      const hitVariants = inf ? kanaVariants(inf.surface) : [];
+      const isHitRow = r => hitVariants.length > 0 && (hitVariants.includes(r.written) || hitVariants.includes(r.reading));
+      const hasHit = !!(conj && conj.rows.some(isHitRow));
+      let hitHtml = '';
+      if (inf) {
+        const chain = inf.path.slice().reverse().join(' → ');
+        hitHtml = `<div class="detail-hit">你搜尋的「${escapeHtml(inf.surface)}」是 ${escapeHtml(inf.base)} 的變化形：${escapeHtml(chain)}${escapeHtml(inflectionExtra(inf))}${hasHit ? ' <button class="hit-jump" id="hitJump">看變化表 ↓</button>' : ''}</div>`;
+      }
       let conjHtml = '';
       if (conj) {
         conjHtml = `
@@ -833,11 +1277,12 @@
             <h3 class="detail-h">變化形 <span class="detail-h-sub">${escapeHtml(conj.title)}</span></h3>
             <div class="conj-table">
               ${conj.rows.map(r => {
+                const hit = isHitRow(r);
                 const main = r.written || r.reading;
                 const sub = (r.written && r.reading && r.reading !== r.written) ? `<div class="conj-reading">${escapeHtml(r.reading)}</div>` : '';
                 const sp = r.reading || r.written;
-                return `<div class="conj-row">
-                  <div class="conj-label">${escapeHtml(r.label)}</div>
+                return `<div class="conj-row${hit ? ' conj-hit' : ''}">
+                  <div class="conj-label">${escapeHtml(r.label)}${hit ? '<span class="hit-badge">你搜的形態</span>' : ''}</div>
                   <div class="conj-form"><div class="conj-main">${escapeHtml(main)}</div>${sub}</div>
                   <button class="mini-speak" title="朗讀" data-speak="${escapeHtml(sp)}">${SPEAKER_SVG.replace(/width="17" height="17"/, 'width="15" height="15"')}</button>
                 </div>`;
@@ -867,6 +1312,7 @@
           </div>
           ${formsHtml}
           ${zhHtml}
+          ${hitHtml}
         </article>
         <section class="detail-section">
           <h3 class="detail-h">釋義與例句</h3>
@@ -880,6 +1326,11 @@
         else { closeDetail(); renderCurrentView(); window.scrollTo(0, savedScrollY); }
       });
       page.querySelector('#detailFav').addEventListener('click', () => toggleFavorite(entry));
+      const jump = page.querySelector('#hitJump');
+      if (jump) jump.addEventListener('click', () => {
+        const row = page.querySelector('.conj-hit');
+        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
       page.querySelectorAll('[data-speak]').forEach(btn => {
         btn.addEventListener('click', () => speakJapanese(btn.getAttribute('data-speak')));
       });
@@ -944,6 +1395,8 @@
     function updateCounts() {
       favCountEl.textContent = favorites.length;
       histCountEl.textContent = historyList.length;
+      favCountEl.style.display = favorites.length ? '' : 'none';
+      histCountEl.style.display = historyList.length ? '' : 'none';
     }
 
     function escapeHtml(str) {
@@ -954,7 +1407,7 @@
         .replace(/"/g, '&quot;');
     }
 
-    function renderWordCards(entries) {
+    function renderWordCards(entries, notes) {
       if (!entries || entries.length === 0) {
         return `<div class="empty-state">
           <strong>找不到相符的單字</strong>
@@ -965,7 +1418,21 @@
       const container = document.createElement('div');
       container.className = 'word-list';
 
+      const grouped = !!(notes && notes.size > 0);
+      let lastGroup = '';
+      const surfaceText = grouped ? [...notes.values()][0].surface : '';
+
       entries.forEach((entry) => {
+        if (grouped) {
+          const grp = notes.has(entry) ? 'infl' : (lastGroup === 'infl' || lastGroup === 'other' ? 'other' : 'exact');
+          if (grp !== lastGroup) {
+            const lab = document.createElement('div');
+            lab.className = 'group-label';
+            lab.textContent = grp === 'exact' ? '直接命中' : grp === 'infl' ? `可能的原形（由「${surfaceText}」還原）` : '其他相近的詞';
+            container.appendChild(lab);
+            lastGroup = grp;
+          }
+        }
         const [kanjis, kanas, isCommon, senses, zhs] = entry;
         const primaryWord = kanjis.length > 0 ? kanjis[0] : kanas[0];
         const primaryReading = kanas[0] || '';
@@ -976,6 +1443,13 @@
         const fav = isFavorite(entry);
         const card = document.createElement('article');
         card.className = 'word-card';
+
+        let inflHtml = '';
+        const inf = notes && notes.get(entry);
+        if (inf) {
+          const chain = inf.path.slice().reverse().join(' → ');
+          inflHtml = `<div class="infl-note"><strong>${escapeHtml(inf.surface)}</strong> 是 <strong>${escapeHtml(inf.base)}</strong> 的變化形　${escapeHtml(chain)}${escapeHtml(inflectionExtra(inf))}</div>`;
+        }
 
         let zhHtml = '';
         if (zhs && zhs.length > 0) {
@@ -1028,6 +1502,7 @@
               </button>
             </div>
           </div>
+          ${inflHtml}
           ${zhHtml}
           <div class="senses-list">${sensesHtml}</div>
           <div class="card-more">詳細頁・變化形 ›</div>
@@ -1035,7 +1510,7 @@
         card.classList.add('clickable');
         card.addEventListener('click', (e) => {
           if (e.target.closest('button')) return;
-          openDetail(entry);
+          openDetail(entry, inf || null);
         });
 
         card.querySelector('.fav-btn').addEventListener('click', () => toggleFavorite(entry));
@@ -1085,12 +1560,46 @@
       renderCurrentView();
     }
 
+
+    // ===== 預設首頁：北海道滑雪旅遊常用詞 =====
+    const FEATURED_GROUPS = [
+      ['雪場與裝備', ['スキー', 'スノーボード', 'スキー場', 'ゲレンデ', 'リフト', 'ゴーグル', 'ヘルメット', '初心者']],
+      ['雪況與天氣', ['雪', '粉雪', '吹雪', '雪崩', '圧雪', '天気予報', '運休']],
+      ['交通與住宿', ['北海道', '札幌', '空港', '送迎', '予約', '乾燥室', '荷物']],
+      ['溫泉與美食', ['温泉', '露天風呂', '味噌ラーメン', 'スープカレー', '海鮮']],
+      ['突發狀況', ['転ぶ', '滑る', '怪我', '救急', '助けて']]
+    ];
+    let featuredCache = null;
+
+    function resolveFeatured() {
+      if (featuredCache) return featuredCache;
+      const wanted = new Set();
+      FEATURED_GROUPS.forEach(([, words]) => words.forEach(w => wanted.add(w)));
+      const best = new Map();
+      for (let i = 0; i < dictData.length; i++) {
+        const entry = dictData[i];
+        const forms = entry[0].length > 0 ? entry[0] : entry[1];
+        for (let f = 0; f < forms.length; f++) {
+          const w = forms[f];
+          if (!wanted.has(w)) continue;
+          const cur = best.get(w);
+          if (!cur || entry[2] > cur[2] || (entry[2] === cur[2] && entry[3].length > cur[3].length)) {
+            best.set(w, entry);
+          }
+        }
+      }
+      featuredCache = FEATURED_GROUPS
+        .map(([title, words]) => [title, words.map(w => best.get(w)).filter(Boolean)])
+        .filter(([, entries]) => entries.length > 0);
+      return featuredCache;
+    }
+
     function renderCurrentView() {
       strategyArea.innerHTML = '';
       mainContent.innerHTML = '';
 
       if (currentDetail) {
-        mainContent.appendChild(renderDetailPage(currentDetail));
+        mainContent.appendChild(renderDetailPage(currentDetail, currentDetailInf));
         return;
       }
 
@@ -1098,15 +1607,23 @@
         if (!isDbReady) return;
 
         if (!searchInput.value.trim()) {
-          const commonSample = dictData.filter(x => x[2] === 1).slice(0, 8);
-          resultCountEl.textContent = commonSample.length;
+          const featured = resolveFeatured();
+          resultCountEl.textContent = 0;
           strategyArea.innerHTML = `
             <div class="strategy-banner">
-              <span>已載入全部 ${dictData.length.toLocaleString()} 筆詞條，輸入日文、漢字或英文即可即時檢索</span>
-              <span class="mode-tag mode-jp">三向智慧引擎就緒</span>
+              <span>北海道滑雪旅遊常用詞　輸入日文、中文、英文或羅馬拼音即可檢索</span>
+              <span class="mode-tag mode-jp">滑雪旅遊</span>
             </div>
           `;
-          mainContent.appendChild(renderWordCards(commonSample));
+          featured.forEach(([title, entries]) => {
+            const label = document.createElement('div');
+            label.className = 'featured-label';
+            label.textContent = title;
+            mainContent.appendChild(label);
+            const rendered = renderWordCards(entries);
+            if (typeof rendered === 'string') mainContent.innerHTML += rendered;
+            else mainContent.appendChild(rendered);
+          });
           return;
         }
 
@@ -1133,11 +1650,23 @@
             <span class="mode-tag ${modeClass}">${escapeHtml(out.badge || '')}</span>
           </div>
         `;
+        if (out.alt) {
+          const btn = document.createElement('button');
+          btn.className = 'alt-link';
+          btn.textContent = out.alt.label;
+          btn.addEventListener('click', () => {
+            const q = searchInput.value.trim();
+            currentSearchOutput = executeSmartSearch(q, out.alt.opts);
+            resultCountEl.textContent = currentSearchOutput.results.length;
+            renderCurrentView();
+          });
+          strategyArea.appendChild(btn);
+        }
         if (out.mode === 'num' && out.numberInfo) {
           mainContent.appendChild(renderNumberCard(out.numberInfo));
         }
         if (out.results.length > 0 || out.mode !== 'num') {
-          const rendered = renderWordCards(out.results);
+          const rendered = renderWordCards(out.results, out.inflections);
           if (typeof rendered === 'string') mainContent.innerHTML += rendered;
           else mainContent.appendChild(rendered);
         }
@@ -1216,3 +1745,9 @@
 
     updateCounts();
     loadDatabase();
+
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
