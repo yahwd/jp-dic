@@ -15,7 +15,7 @@
     <header>
       <div class="brand">
         <h1>日語檢索筆記</h1>
-        <span>個人學習專用 · 離線／靜態查詢</span>
+        <span>個人學習專用 · 詞庫離線查詢 · 查不到時線上翻譯</span>
       </div>
       <div class="db-status" id="dbStatus">
         <span class="status-dot loading" id="statusDot"></span>
@@ -29,7 +29,7 @@
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="text" id="searchInput" placeholder="輸入日文假名、漢字（日文優先 / 中文轉日文）或英文單字..." autocomplete="off" />
+        <input type="text" id="searchInput" placeholder="輸入日文、中文、英文或數字（查不到會自動翻譯）..." autocomplete="off" />
         <button class="clear-btn" id="clearBtn" title="清除">×</button>
       </div>
     </div>
@@ -42,6 +42,8 @@
       <button class="chip" data-q="蘋果">蘋果 (中文轉日文)</button>
       <button class="chip" data-q="單板滑雪">單板滑雪 (中文轉日文)</button>
       <button class="chip" data-q="coffee">coffee (英文)</button>
+      <button class="chip" data-q="123456789">123456789 (數字)</button>
+      <button class="chip" data-q="我想吃拉麵">我想吃拉麵 (翻譯)</button>
     </div>
 
     <nav class="tabs">
@@ -70,7 +72,7 @@
     </div>
 
     <footer>
-      僅供個人學習與離線查詢使用 · 收藏與歷史紀錄儲存於本機瀏覽器
+      僅供個人學習使用 · 詞庫為離線查詢；查不到時才會把搜尋文字送到線上翻譯服務 · 收藏與歷史紀錄儲存於本機瀏覽器
     </footer>
   </div>
 

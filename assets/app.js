@@ -89,10 +89,282 @@
       return /[\u4E00-\u9FFF]/.test(str);
     }
 
+
+    // ===== 數字處理：阿拉伯數字 -> 日文漢數字／讀音 =====
+    const KANJI_DIGITS = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+    const DIGIT_READ = ['', 'いち', 'に', 'さん', 'よん', 'ご', 'ろく', 'なな', 'はち', 'きゅう'];
+    const UNIT_KANJI = ['', '万', '億', '兆', '京'];
+    const UNIT_READ = ['', 'まん', 'おく', 'ちょう', 'けい'];
+
+    function normalizeDigits(str) {
+      return str
+        .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+        .replace(/[,，\s]/g, '');
+    }
+
+    function isNumericQuery(str) {
+      return /^[0-9０-９][0-9０-９,，]*$/.test(str.trim());
+    }
+
+    // 1~9999 -> { k: 漢數字, r: 讀音 }；isLead 表示是否為整個數字的最前面
+    function group4ToJapanese(v, isLead) {
+      const th = Math.floor(v / 1000) % 10;
+      const h = Math.floor(v / 100) % 10;
+      const t = Math.floor(v / 10) % 10;
+      const o = v % 10;
+      let k = '', r = '';
+
+      if (th) {
+        if (th === 1) {
+          if (isLead) { k += '千'; r += 'せん'; }
+          else { k += '一千'; r += 'いっせん'; }
+        } else {
+          k += KANJI_DIGITS[th] + '千';
+          r += th === 3 ? 'さんぜん' : th === 8 ? 'はっせん' : DIGIT_READ[th] + 'せん';
+        }
+      }
+      if (h) {
+        if (h === 1) { k += '百'; r += 'ひゃく'; }
+        else {
+          k += KANJI_DIGITS[h] + '百';
+          r += h === 3 ? 'さんびゃく' : h === 6 ? 'ろっぴゃく' : h === 8 ? 'はっぴゃく' : DIGIT_READ[h] + 'ひゃく';
+        }
+      }
+      if (t) {
+        if (t === 1) { k += '十'; r += 'じゅう'; }
+        else { k += KANJI_DIGITS[t] + '十'; r += DIGIT_READ[t] + 'じゅう'; }
+      }
+      if (o) { k += KANJI_DIGITS[o]; r += DIGIT_READ[o]; }
+      return { k, r };
+    }
+
+    function numberToJapanese(raw) {
+      const s = normalizeDigits(raw);
+      if (!/^\d+$/.test(s) || s.length > 20) return null;
+      if (s.length > 1 && s[0] === '0') return null;
+
+      const fullwidth = s.replace(/\d/g, d => String.fromCharCode(d.charCodeAt(0) + 0xFEE0));
+      const positional = s.replace(/\d/g, d => KANJI_DIGITS[+d]);
+      const n = BigInt(s);
+
+      if (n === 0n) {
+        return { digits: s, fullwidth, positional, kanji: '零', alt: '〇', reading: 'ゼロ・れい' };
+      }
+
+      const groups = [];
+      let rem = n;
+      while (rem > 0n) { groups.push(Number(rem % 10000n)); rem = rem / 10000n; }
+
+      let kanji = '', reading = '';
+      for (let i = groups.length - 1; i >= 0; i--) {
+        const v = groups[i];
+        if (!v) continue;
+        const isLead = kanji === '';
+        const g = group4ToJapanese(v, isLead);
+        let r = g.r;
+        // 兆、京 前的促音化（いっちょう、はっちょう、じゅっちょう…）
+        if (i === 3) {
+          r = r.replace(/いち$/, 'いっ').replace(/はち$/, 'はっ').replace(/じゅう$/, 'じゅっ');
+        } else if (i === 4) {
+          r = r.replace(/いち$/, 'いっ').replace(/はち$/, 'はっ').replace(/じゅう$/, 'じゅっ')
+               .replace(/ろく$/, 'ろっ').replace(/ひゃく$/, 'ひゃっ');
+        }
+        kanji += g.k + UNIT_KANJI[i];
+        reading += r + UNIT_READ[i];
+      }
+      return { digits: s, fullwidth, positional, kanji, alt: '', reading };
+    }
+
+    function searchNumber(q, info) {
+      const kanjiTargets = new Set([info.fullwidth, info.digits, info.kanji]);
+      if (info.alt) kanjiTargets.add(info.alt);
+      const glossTargets = new Set([info.digits, BigInt(info.digits).toLocaleString('en-US')]);
+
+      const byKanji = [];
+      const byGloss = [];
+      for (let i = 0; i < dictData.length; i++) {
+        const entry = dictData[i];
+        if (entry[0].some(k => kanjiTargets.has(k))) {
+          byKanji.push(entry);
+          continue;
+        }
+        if (byGloss.length < 30) {
+          const senses = entry[3];
+          let hit = false;
+          for (let j = 0; j < senses.length && !hit; j++) {
+            hit = senses[j].g.some(g => glossTargets.has(g.trim()));
+          }
+          if (hit) byGloss.push(entry);
+        }
+      }
+      byKanji.sort((a, b) => b[2] - a[2]);
+      byGloss.sort((a, b) => b[2] - a[2]);
+      return {
+        mode: 'num',
+        badge: '數字 → 日文',
+        note: `「${q}」的日文數字寫法與讀法`,
+        numberInfo: info,
+        results: [...byKanji, ...byGloss].slice(0, 50)
+      };
+    }
+
+    // ===== 線上翻譯備援（詞庫查不到時使用）=====
+    const translateCache = new Map();
+    let searchToken = 0;
+    let translateTimer = null;
+
+    function fetchWithTimeout(url, ms = 7000) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), ms);
+      return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+    }
+
+    async function translateViaGoogle(text, from, to) {
+      const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&dt=t'
+        + `&sl=${encodeURIComponent(from)}&tl=${encodeURIComponent(to)}&q=${encodeURIComponent(text)}`;
+      const res = await fetchWithTimeout(url);
+      if (!res.ok) throw new Error('google ' + res.status);
+      const data = await res.json();
+      const out = (data[0] || []).map(seg => seg[0]).join('').trim();
+      if (!out) throw new Error('google empty');
+      return out;
+    }
+
+    async function translateViaMyMemory(text, from, to) {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(from + '|' + to)}`;
+      const res = await fetchWithTimeout(url);
+      if (!res.ok) throw new Error('mymemory ' + res.status);
+      const data = await res.json();
+      const out = ((data.responseData && data.responseData.translatedText) || '').trim();
+      if (!out || String(data.responseStatus) !== '200') throw new Error('mymemory empty');
+      return out;
+    }
+
+    async function translateText(text, from, to) {
+      const key = `${from}|${to}|${text}`;
+      if (translateCache.has(key)) return translateCache.get(key);
+      let result;
+      try {
+        result = { text: await translateViaGoogle(text, from, to), engine: 'Google 翻譯' };
+      } catch (e1) {
+        result = { text: await translateViaMyMemory(text, from, to), engine: 'MyMemory' };
+      }
+      translateCache.set(key, result);
+      return result;
+    }
+
+    const LANG_LABEL = { 'ja': '日文', 'en': '英文', 'zh-TW': '中文' };
+
+    // 日文 -> 英文；中文／英文 -> 日文
+    async function translateFallback(q) {
+      let from, to;
+      if (hasKana(q)) { from = 'ja'; to = 'en'; }
+      else if (hasHanzi(q)) { from = 'zh-TW'; to = 'ja'; }
+      else { from = 'en'; to = 'ja'; }
+
+      let r = await translateText(q, from, to);
+      // 純漢字詞翻回來一樣 -> 其實是日文漢字，改翻成英文
+      if (to === 'ja' && r.text === q.trim()) {
+        from = 'ja'; to = 'en';
+        r = await translateText(q, from, to);
+      }
+
+      let matches = [];
+      if (to === 'ja') {
+        const lookup = executeSmartSearch(r.text);
+        if (lookup.mode === 'jp') matches = lookup.results.slice(0, 5);
+      }
+      return { text: r.text, engine: r.engine, from, to, matches };
+    }
+
+    function startTranslate(query, token) {
+      clearTimeout(translateTimer);
+      translateTimer = setTimeout(async () => {
+        if (token !== searchToken) return;
+        try {
+          const res = await translateFallback(query);
+          if (token !== searchToken) return;
+          currentSearchOutput.translate = { state: 'done', query, ...res };
+        } catch (err) {
+          if (token !== searchToken) return;
+          currentSearchOutput.translate = { state: 'error', query };
+        }
+        if (currentTab === 'search') renderCurrentView();
+      }, 450);
+    }
+
+    function renderNumberCard(info) {
+      const card = document.createElement('article');
+      card.className = 'word-card number-card';
+      const rows = [
+        ['漢數字', info.kanji + (info.alt ? `（${info.alt}）` : '')],
+        ['讀音', info.reading],
+        ['全形', info.fullwidth],
+        ['逐字寫法', info.positional]
+      ];
+      card.innerHTML = `
+        <div class="num-head">
+          <span class="num-arabic">${escapeHtml(BigInt(info.digits).toLocaleString('en-US'))}</span>
+          <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(info.reading.split('・')[0])}">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+          </button>
+        </div>
+        ${rows.map(([label, val]) => `
+          <div class="num-row"><span class="num-label">${label}</span><span class="num-val">${escapeHtml(val)}</span></div>
+        `).join('')}
+      `;
+      card.querySelector('[data-speak]').addEventListener('click', e => speakJapanese(e.currentTarget.getAttribute('data-speak')));
+      return card;
+    }
+
+    function renderTranslateBlock(t) {
+      const wrap = document.createElement('div');
+      if (t.state === 'loading') {
+        wrap.innerHTML = `<div class="empty-state"><strong>詞庫找不到，正在翻譯…</strong></div>`;
+        return wrap;
+      }
+      if (t.state === 'error') {
+        wrap.innerHTML = `<div class="empty-state"><strong>找不到相符的單字，翻譯也失敗了</strong><p>線上翻譯需要網路連線，請確認網路後重新搜尋。</p></div>`;
+        return wrap;
+      }
+      const card = document.createElement('article');
+      card.className = 'word-card translate-card';
+      const speakBtn = t.to === 'ja' ? `
+        <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(t.text)}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+        </button>` : '';
+      card.innerHTML = `
+        <div class="tr-dir">${LANG_LABEL[t.from] || t.from} → ${LANG_LABEL[t.to] || t.to} · ${escapeHtml(t.engine)}（機器翻譯，僅供參考）</div>
+        <div class="tr-src">${escapeHtml(t.query)}</div>
+        <div class="tr-out-row">
+          <div class="tr-out">${escapeHtml(t.text)}</div>
+          ${speakBtn}
+        </div>
+      `;
+      const sp = card.querySelector('[data-speak]');
+      if (sp) sp.addEventListener('click', () => speakJapanese(sp.getAttribute('data-speak')));
+      wrap.appendChild(card);
+
+      if (t.matches && t.matches.length > 0) {
+        const label = document.createElement('div');
+        label.className = 'tr-related-label';
+        label.textContent = `詞庫中「${t.text}」的相關詞條`;
+        wrap.appendChild(label);
+        wrap.appendChild(renderWordCards(t.matches));
+      }
+      return wrap;
+    }
+
     function executeSmartSearch(rawQuery) {
       const q = rawQuery.trim();
       if (!q || !isDbReady) return { mode: 'empty', results: [], note: '' };
       const qLower = q.toLowerCase();
+
+      // 0. 純數字（半形／全形）-> 日文數字寫法與讀法
+      if (isNumericQuery(q)) {
+        const info = numberToJapanese(q);
+        if (info) return searchNumber(q, info);
+      }
 
       // 1. 日文假名或混合假名漢字 -> 直接比對日文
       if (hasKana(q)) {
@@ -416,11 +688,21 @@
 
     function performSearch(query, saveHist = true) {
       clearBtn.style.display = query ? 'flex' : 'none';
+      const token = ++searchToken;
+      clearTimeout(translateTimer);
       currentSearchOutput = executeSmartSearch(query);
       resultCountEl.textContent = currentSearchOutput.results.length;
 
-      if (saveHist && query.trim() && currentSearchOutput.results.length > 0) {
-        addHistory(query.trim());
+      const q = query.trim();
+      const needTranslate = isDbReady && q && currentSearchOutput.results.length === 0
+        && currentSearchOutput.mode !== 'num';
+      if (needTranslate) {
+        currentSearchOutput.translate = { state: 'loading', query: q };
+        startTranslate(q, token);
+      }
+
+      if (saveHist && q && (currentSearchOutput.results.length > 0 || currentSearchOutput.mode === 'num')) {
+        addHistory(q);
       }
 
       if (currentTab !== 'search') {
@@ -458,17 +740,37 @@
           return;
         }
 
-        const modeClass = currentSearchOutput.mode === 'jp' ? 'mode-jp'
-                        : currentSearchOutput.mode === 'en' ? 'mode-en' : 'mode-zh';
+        const out = currentSearchOutput;
+
+        if (out.translate) {
+          const t = out.translate;
+          const lang = t.state === 'done' ? `${LANG_LABEL[t.from]} → ${LANG_LABEL[t.to]}` : '線上翻譯';
+          strategyArea.innerHTML = `
+            <div class="strategy-banner">
+              <span>詞庫查無「${escapeHtml(t.query)}」，改用線上翻譯</span>
+              <span class="mode-tag mode-zh">翻譯 ${escapeHtml(lang)}</span>
+            </div>
+          `;
+          mainContent.appendChild(renderTranslateBlock(t));
+          return;
+        }
+
+        const modeClass = out.mode === 'jp' || out.mode === 'num' ? 'mode-jp'
+                        : out.mode === 'en' ? 'mode-en' : 'mode-zh';
         strategyArea.innerHTML = `
           <div class="strategy-banner">
-            <span>${escapeHtml(currentSearchOutput.note)}</span>
-            <span class="mode-tag ${modeClass}">${escapeHtml(currentSearchOutput.badge || '')}</span>
+            <span>${escapeHtml(out.note)}</span>
+            <span class="mode-tag ${modeClass}">${escapeHtml(out.badge || '')}</span>
           </div>
         `;
-        const rendered = renderWordCards(currentSearchOutput.results);
-        if (typeof rendered === 'string') mainContent.innerHTML = rendered;
-        else mainContent.appendChild(rendered);
+        if (out.mode === 'num' && out.numberInfo) {
+          mainContent.appendChild(renderNumberCard(out.numberInfo));
+        }
+        if (out.results.length > 0 || out.mode !== 'num') {
+          const rendered = renderWordCards(out.results);
+          if (typeof rendered === 'string') mainContent.innerHTML += rendered;
+          else mainContent.appendChild(rendered);
+        }
       } else if (currentTab === 'favorites') {
         if (favorites.length === 0) {
           mainContent.innerHTML = `<div class="empty-state"><strong>尚未收藏任何單字</strong><p>點擊單字卡片右上角的愛心圖示，即可將單字加入個人單字本。</p></div>`;

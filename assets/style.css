@@ -543,3 +543,20 @@
       font-size: 0.78rem;
       color: var(--text-muted);
     }
+
+
+    /* ===== 數字卡片 ===== */
+    .number-card { margin-bottom: 14px; border-left: 3px solid var(--accent); }
+    .num-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .num-arabic { font-size: 1.5rem; font-weight: 600; font-family: 'Inter', sans-serif; letter-spacing: 0.02em; }
+    .num-row { display: flex; gap: 14px; padding: 7px 0; border-top: 1px solid var(--border); align-items: baseline; }
+    .num-label { flex: 0 0 4.5em; font-size: 0.8rem; color: var(--text-muted); }
+    .num-val { font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif; font-size: 1.05rem; word-break: break-all; }
+
+    /* ===== 翻譯備援卡片 ===== */
+    .translate-card { margin-bottom: 14px; border-left: 3px solid var(--tag-zh-text); }
+    .tr-dir { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px; }
+    .tr-src { font-size: 0.95rem; color: var(--text-secondary); margin-bottom: 6px; word-break: break-word; }
+    .tr-out-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .tr-out { font-size: 1.5rem; font-weight: 500; font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif; word-break: break-word; }
+    .tr-related-label { font-size: 0.82rem; color: var(--text-secondary); margin: 18px 0 10px; }
