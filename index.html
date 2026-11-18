@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow, noarchive" />
+  <title>個人日語筆記庫</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./assets/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <h1>日語檢索筆記</h1>
+        <span>個人學習專用 · 離線／靜態查詢</span>
+      </div>
+      <div class="db-status" id="dbStatus">
+        <span class="status-dot loading" id="statusDot"></span>
+        <span id="statusText">正在載入完整詞庫...</span>
+      </div>
+    </header>
+
+    <div class="search-wrapper">
+      <div class="search-input-box">
+        <svg class="search-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="searchInput" placeholder="輸入日文假名、漢字（日文優先 / 中文轉日文）或英文單字..." autocomplete="off" />
+        <button class="clear-btn" id="clearBtn" title="清除">×</button>
+      </div>
+    </div>
+
+    <div class="quick-bar">
+      <span>快速測試：</span>
+      <button class="chip" data-q="食べる">食べる</button>
+      <button class="chip" data-q="りんご">りんご</button>
+      <button class="chip" data-q="明白">明白 (日文漢字優先)</button>
+      <button class="chip" data-q="蘋果">蘋果 (中文轉日文)</button>
+      <button class="chip" data-q="單板滑雪">單板滑雪 (中文轉日文)</button>
+      <button class="chip" data-q="coffee">coffee (英文)</button>
+    </div>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="search">
+        搜尋結果 <span class="badge" id="resultCount">0</span>
+      </button>
+      <button class="tab-btn" data-tab="favorites">
+        我的收藏 <span class="badge" id="favCount">0</span>
+      </button>
+      <button class="tab-btn" data-tab="history">
+        搜尋歷史 <span class="badge" id="histCount">0</span>
+      </button>
+    </nav>
+
+    <div id="strategyArea"></div>
+    <main id="mainContent"></main>
+
+    <div class="load-banner" id="localLoaderBanner" style="display:none;">
+      <div>
+        <strong>本機雙擊開啟提示：</strong>若您直接雙擊 <code>index.html</code> 開啟，因瀏覽器安全限制無法自動讀取 <code>data/</code> 資料夾，請手動選取 <code>data/dict_all.json</code> 與 <code>data/zh_bridge.json</code>（上傳至網站空間則會自動載入）。
+      </div>
+      <label class="file-upload-label">
+        手動選取 data 檔案
+        <input type="file" id="jsonFileInput" accept=".json" multiple style="display:none;" />
+      </label>
+    </div>
+
+    <footer>
+      僅供個人學習與離線查詢使用 · 收藏與歷史紀錄儲存於本機瀏覽器
+    </footer>
+  </div>
+
+  <script src="./assets/app.js"></script>
+</body>
+</html>
