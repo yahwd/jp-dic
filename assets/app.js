@@ -355,6 +355,56 @@
       return wrap;
     }
 
+
+    // 英文搜尋：釋義完全等於輸入字的詞優先（eat → 食べる），再依詞性順序、常用度排序
+    function searchEnglish(q, qLower) {
+      const escaped = qLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordRegex = new RegExp(`\\b${escaped}\\b`);
+      const toForm = `to ${qLower}`;
+      const scored = [];
+
+      for (let i = 0; i < dictData.length; i++) {
+        const entry = dictData[i];
+        const senses = entry[3];
+        let best = 0;
+        for (let j = 0; j < senses.length; j++) {
+          const glosses = senses[j].g;
+          for (let k = 0; k < glosses.length; k++) {
+            const gLow = glosses[k].toLowerCase();
+            if (!gLow.includes(qLower)) continue;
+            const gClean = gLow.replace(/\([^)]*\)/g, '').trim();
+            let sc;
+            if (gClean === qLower || gClean === toForm) {
+              sc = 100;                                   // 釋義完全相同
+            } else if (gClean.startsWith(qLower + ' ') || gClean.startsWith(toForm + ' ')) {
+              sc = 60;                                    // eat out、to eat up 之類片語
+            } else if (wordRegex.test(gClean)) {
+              sc = 30;                                    // 句中出現該單字
+            } else {
+              sc = 8;                                     // 只是字串包含
+            }
+            if (sc >= 60 && gClean !== gLow.trim()) sc -= 15; // 帶括號補充（如 go (board game)）略降
+            sc -= Math.min(j, 6) * 4 + Math.min(k, 4);    // 越前面的釋義越重要
+            sc -= Math.min(glosses.length - 1, 4);        // 該義項釋義越精簡越準
+            if (sc > best) best = sc;
+          }
+        }
+        if (best > 0) {
+          if (entry[2]) best += 25;                       // 常用詞加分
+          best -= Math.min(senses.length, 10) * 0.5;      // 義項太多的多義詞略降
+          scored.push([best, entry]);
+        }
+      }
+
+      scored.sort((x, y) => y[0] - x[0]);
+      return {
+        mode: 'en',
+        badge: '英文 → 日文與發音',
+        note: `搜尋英文釋義包含「${q}」的日文單字（完全相同的釋義排最前面）`,
+        results: scored.slice(0, 50).map(x => x[1])
+      };
+    }
+
     function executeSmartSearch(rawQuery) {
       const q = rawQuery.trim();
       if (!q || !isDbReady) return { mode: 'empty', results: [], note: '' };
@@ -397,41 +447,7 @@
 
       // 2. 純英文 -> 搜尋英文釋義 -> 顯示對應日文與假名發音
       if (isAsciiEnglish(q)) {
-        const exact = [];
-        const partial = [];
-        const escaped = qLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const wordRegex = new RegExp(`\\b${escaped}\\b`, 'i');
-
-        for (let i = 0; i < dictData.length; i++) {
-          const entry = dictData[i];
-          const senses = entry[3];
-          let isExact = false;
-          let isPartial = false;
-          for (let j = 0; j < senses.length; j++) {
-            const glosses = senses[j].g;
-            for (let k = 0; k < glosses.length; k++) {
-              const gLow = glosses[k].toLowerCase();
-              if (gLow === qLower || gLow === `to ${qLower}` || wordRegex.test(gLow)) {
-                isExact = true;
-                break;
-              } else if (!isPartial && partial.length < 60 && gLow.includes(qLower)) {
-                isPartial = true;
-              }
-            }
-            if (isExact) break;
-          }
-          if (isExact) exact.push(entry);
-          else if (isPartial) partial.push(entry);
-          if (exact.length >= 80) break;
-        }
-        exact.sort((a, b) => b[2] - a[2]);
-        partial.sort((a, b) => b[2] - a[2]);
-        return {
-          mode: 'en',
-          badge: '英文 → 日文與發音',
-          note: `搜尋英文釋義包含「${q}」的日文單字`,
-          results: [...exact, ...partial].slice(0, 50)
-        };
+        return searchEnglish(q, qLower);
       }
 
       // 3. 漢字輸入 -> 優先檢查日文漢字；若日文無此漢字 -> 當作中文透過英文橋接反查日文
@@ -527,6 +543,347 @@
       }
 
       return { mode: 'empty', results: [], note: '' };
+    }
+
+
+    // ===== 變化形引擎 =====
+    const GODAN = {
+      'う': { a: 'わ', i: 'い', e: 'え', o: 'お', te: 'って', ta: 'った' },
+      'く': { a: 'か', i: 'き', e: 'け', o: 'こ', te: 'いて', ta: 'いた' },
+      'ぐ': { a: 'が', i: 'ぎ', e: 'げ', o: 'ご', te: 'いで', ta: 'いだ' },
+      'す': { a: 'さ', i: 'し', e: 'せ', o: 'そ', te: 'して', ta: 'した' },
+      'つ': { a: 'た', i: 'ち', e: 'て', o: 'と', te: 'って', ta: 'った' },
+      'ぬ': { a: 'な', i: 'に', e: 'ね', o: 'の', te: 'んで', ta: 'んだ' },
+      'ぶ': { a: 'ば', i: 'び', e: 'べ', o: 'ぼ', te: 'んで', ta: 'んだ' },
+      'む': { a: 'ま', i: 'み', e: 'め', o: 'も', te: 'んで', ta: 'んだ' },
+      'る': { a: 'ら', i: 'り', e: 'れ', o: 'ろ', te: 'って', ta: 'った' }
+    };
+
+    const POS_LABELS = {
+      'n': '名詞', 'vs': '可加「する」', 'vt': '他動詞', 'vi': '自動詞', 'exp': '慣用表現',
+      'adj-no': 'の形容詞', 'adj-na': 'な形容詞', 'adj-i': 'い形容詞', 'adj-ix': 'い形容詞（いい型）',
+      'adj-f': '連體修飾', 'adj-pn': '連體詞', 'adj-t': 'たる形容詞', 'adv': '副詞', 'adv-to': '副詞（と）',
+      'n-suf': '名詞性接尾詞', 'n-pref': '名詞性接頭詞', 'suf': '接尾詞', 'pref': '接頭詞', 'int': '感嘆詞',
+      'pn': '代名詞', 'prt': '助詞', 'conj': '接續詞', 'ctr': '量詞', 'num': '數詞', 'unc': '未分類',
+      'aux-v': '助動詞', 'aux': '輔助詞', 'v1': '一段動詞', 'v1-s': '一段動詞', 'vk': '来る（不規則）',
+      'vs-i': 'する（不規則）', 'vs-s': 'する動詞（特殊）', 'vs-c': 'す動詞', 'vz': 'ずる動詞',
+      'v5aru': '五段動詞（ある型）', 'v5r-i': '五段動詞（ある）', 'v5k-s': '五段動詞（行く）', 'v5u-s': '五段動詞（特殊）'
+    };
+
+    function posLabel(tag) {
+      if (POS_LABELS[tag]) return POS_LABELS[tag];
+      if (/^v5/.test(tag)) return '五段動詞';
+      if (/^v[24]/.test(tag)) return '古語動詞';
+      return tag;
+    }
+
+    function detectConjType(entry) {
+      const tags = new Set();
+      entry[3].forEach(sn => (sn.p || []).forEach(t => tags.add(t)));
+      const arr = [...tags];
+      if (tags.has('vk')) return { kind: 'kuru', title: '来る（カ変動詞）' };
+      if (tags.has('vs-i')) return { kind: 'suru', tag: 'vs-i', title: 'する（サ変動詞）' };
+      if (tags.has('vs-s')) return { kind: 'suru', tag: 'vs-s', title: 'する動詞（特殊）' };
+      const v5 = arr.find(t => /^v5/.test(t));
+      if (v5) return { kind: 'godan', tag: v5, title: '五段動詞' };
+      if (tags.has('v1') || tags.has('v1-s')) return { kind: 'ichidan', title: '一段動詞' };
+      if (tags.has('adj-ix')) return { kind: 'adj-ix', title: 'い形容詞（いい型）' };
+      if (tags.has('adj-i')) return { kind: 'adj-i', title: 'い形容詞' };
+      if (tags.has('adj-na')) return { kind: 'adj-na', title: 'な形容詞' };
+      if (tags.has('vs')) return { kind: 'suru-noun', title: '名詞＋する' };
+      return null;
+    }
+
+    function godanRows(base, tag) {
+      const last = base.slice(-1);
+      const m = GODAN[last];
+      if (!m) return null;
+      const stem = base.slice(0, -1);
+      let te = m.te, ta = m.ta, iStem = m.i, eImp = stem + m.e;
+      if (tag === 'v5k-s') { te = 'って'; ta = 'った'; }
+      if (tag === 'v5u-s') { te = 'うて'; ta = 'うた'; }
+      if (tag === 'v5aru') { iStem = 'い'; eImp = stem + 'い'; }
+      const isAru = tag === 'v5r-i';
+      const neg = isAru ? 'ない' : stem + m.a + 'ない';
+      const rows = [
+        ['辞書形（原形）', base],
+        ['ます形（禮貌）', stem + iStem + 'ます'],
+        ['ました（禮貌過去）', stem + iStem + 'ました'],
+        ['ません（禮貌否定）', stem + iStem + 'ません'],
+        ['ない形（否定）', neg],
+        ['なかった形（過去否定）', neg.slice(0, -1) + 'かった'],
+        ['た形（過去）', stem + ta],
+        ['て形', stem + te],
+        ['ば形（假設）', stem + m.e + 'ば']
+      ];
+      if (!isAru) {
+        rows.push(['可能形', stem + m.e + 'る']);
+        rows.push(['受身形（被動）', stem + m.a + 'れる']);
+      }
+      if (!isAru) rows.push(['使役形', stem + m.a + 'せる']);
+      rows.push(['意志形（…吧）', stem + m.o + 'う']);
+      rows.push(['命令形', eImp]);
+      rows.push(['禁止形（不要…）', base + 'な']);
+      return rows;
+    }
+
+    function ichidanRows(base) {
+      if (!base.endsWith('る')) return null;
+      const st = base.slice(0, -1);
+      return [
+        ['辞書形（原形）', base],
+        ['ます形（禮貌）', st + 'ます'],
+        ['ました（禮貌過去）', st + 'ました'],
+        ['ません（禮貌否定）', st + 'ません'],
+        ['ない形（否定）', st + 'ない'],
+        ['なかった形（過去否定）', st + 'なかった'],
+        ['た形（過去）', st + 'た'],
+        ['て形', st + 'て'],
+        ['ば形（假設）', st + 'れば'],
+        ['可能形', st + 'られる'],
+        ['受身形（被動）', st + 'られる'],
+        ['使役形', st + 'させる'],
+        ['意志形（…吧）', st + 'よう'],
+        ['命令形', st + 'ろ'],
+        ['禁止形（不要…）', base + 'な']
+      ];
+    }
+
+    function suruRows(pref, tag) {
+      const sp = tag === 'vs-s';
+      return [
+        ['辞書形（原形）', pref + 'する'],
+        ['ます形（禮貌）', pref + 'します'],
+        ['ました（禮貌過去）', pref + 'しました'],
+        ['ません（禮貌否定）', pref + 'しません'],
+        ['ない形（否定）', pref + (sp ? 'さない' : 'しない')],
+        ['なかった形（過去否定）', pref + (sp ? 'さなかった' : 'しなかった')],
+        ['た形（過去）', pref + 'した'],
+        ['て形', pref + 'して'],
+        ['ば形（假設）', pref + 'すれば'],
+        ['可能形', pref + (sp ? 'せる' : 'できる')],
+        ['受身形（被動）', pref + 'される'],
+        ['使役形', pref + 'させる'],
+        ['意志形（…吧）', pref + 'しよう'],
+        ['命令形', pref + 'しろ'],
+        ['禁止形（不要…）', pref + 'するな']
+      ];
+    }
+
+    function kuruRows(pref, c) {
+      return [
+        ['辞書形（原形）', pref + c.ku + 'る'],
+        ['ます形（禮貌）', pref + c.ki + 'ます'],
+        ['ました（禮貌過去）', pref + c.ki + 'ました'],
+        ['ません（禮貌否定）', pref + c.ki + 'ません'],
+        ['ない形（否定）', pref + c.ko + 'ない'],
+        ['なかった形（過去否定）', pref + c.ko + 'なかった'],
+        ['た形（過去）', pref + c.ki + 'た'],
+        ['て形', pref + c.ki + 'て'],
+        ['ば形（假設）', pref + c.ku + 'れば'],
+        ['可能形', pref + c.ko + 'られる'],
+        ['受身形（被動）', pref + c.ko + 'られる'],
+        ['使役形', pref + c.ko + 'させる'],
+        ['意志形（…吧）', pref + c.ko + 'よう'],
+        ['命令形', pref + c.ko + 'い'],
+        ['禁止形（不要…）', pref + c.ku + 'るな']
+      ];
+    }
+
+    function adjIRows(base, irregular) {
+      if (!base.endsWith('い')) return null;
+      const st = irregular && base.endsWith('いい') ? base.slice(0, -2) + 'よ' : base.slice(0, -1);
+      return [
+        ['辞書形（原形）', base],
+        ['禮貌', base + 'です'],
+        ['否定', st + 'くない'],
+        ['過去', st + 'かった'],
+        ['過去否定', st + 'くなかった'],
+        ['て形', st + 'くて'],
+        ['副詞形', st + 'く'],
+        ['名詞化', st + 'さ'],
+        ['ば形（假設）', st + 'ければ']
+      ];
+    }
+
+    function adjNaRows(base) {
+      return [
+        ['辞書形（原形）', base],
+        ['修飾名詞', base + 'な'],
+        ['否定', base + 'じゃない'],
+        ['過去', base + 'だった'],
+        ['過去否定', base + 'じゃなかった'],
+        ['て形', base + 'で'],
+        ['副詞形', base + 'に'],
+        ['禮貌', base + 'です'],
+        ['禮貌否定', base + 'ではありません'],
+        ['條件', base + 'なら']
+      ];
+    }
+
+    function rowsFor(type, base, isWritten) {
+      if (!base) return null;
+      switch (type.kind) {
+        case 'godan': return godanRows(base, type.tag);
+        case 'ichidan': return ichidanRows(base);
+        case 'adj-i': return adjIRows(base, false);
+        case 'adj-ix': return adjIRows(base, true);
+        case 'adj-na': return adjNaRows(base);
+        case 'suru-noun': return suruRows(base, 'vs');
+        case 'suru': {
+          if (!base.endsWith('する')) return null;
+          return suruRows(base.slice(0, -2), type.tag);
+        }
+        case 'kuru': {
+          if (base.endsWith('来る') || base.endsWith('來る')) {
+            const k = base.charAt(base.length - 2);
+            return kuruRows(base.slice(0, -2), { ko: k, ki: k, ku: k });
+          }
+          if (base.endsWith('くる')) {
+            return kuruRows(base.slice(0, -2), { ko: 'こ', ki: 'き', ku: 'く' });
+          }
+          return null;
+        }
+      }
+      return null;
+    }
+
+    function buildConjugation(entry) {
+      const type = detectConjType(entry);
+      if (!type) return null;
+      const written = entry[0] && entry[0][0] ? entry[0][0] : null;
+      const reading = entry[1] && entry[1][0] ? entry[1][0] : null;
+      const wRows = written ? rowsFor(type, written, true) : null;
+      const rRows = reading ? rowsFor(type, reading, false) : null;
+      const base = wRows || rRows;
+      if (!base) return null;
+      const rows = base.map((r, i) => ({
+        label: r[0],
+        written: wRows ? wRows[i][1] : null,
+        reading: rRows ? rRows[i][1] : null
+      }));
+      return { title: type.title, rows };
+    }
+
+    // ===== 詳細頁 =====
+    let currentDetail = null;
+    let savedScrollY = 0;
+
+    function openDetail(entry) {
+      savedScrollY = window.scrollY;
+      currentDetail = entry;
+      try { history.pushState({ detail: true }, ''); } catch (e) {}
+      renderCurrentView();
+      window.scrollTo(0, 0);
+    }
+
+    function closeDetail() {
+      if (!currentDetail) return false;
+      currentDetail = null;
+      try { if (history.state && history.state.detail) history.replaceState(null, ''); } catch (e) {}
+      return true;
+    }
+
+    window.addEventListener('popstate', () => {
+      if (currentDetail) {
+        currentDetail = null;
+        renderCurrentView();
+        window.scrollTo(0, savedScrollY);
+      }
+    });
+
+    const SPEAKER_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>';
+
+    function renderDetailPage(entry) {
+      const [kanjis, kanas, isCommon, senses, zhs] = entry;
+      const primaryWord = kanjis.length > 0 ? kanjis[0] : kanas[0];
+      const primaryReading = kanas[0] || '';
+      const fav = isFavorite(entry);
+      const page = document.createElement('div');
+      page.className = 'detail-page';
+
+      const otherKanji = kanjis.slice(1);
+      const otherKana = kanjis.length > 0 ? kanas.slice(1) : kanas.slice(1);
+      const formsHtml = (kanjis.length > 1 || kanas.length > 1) ? `
+        <div class="detail-forms">
+          ${otherKanji.length ? `<div><span class="forms-label">其他表記</span>${escapeHtml(otherKanji.join('・'))}</div>` : ''}
+          ${otherKana.length ? `<div><span class="forms-label">其他讀音</span>${escapeHtml(otherKana.join('・'))}</div>` : ''}
+        </div>` : '';
+
+      const zhHtml = (zhs && zhs.length > 0)
+        ? `<div class="zh-meanings">${zhs.map(z => `<span class="zh-pill">${escapeHtml(z)}</span>`).join('')}</div>` : '';
+
+      const sensesHtml = senses.map((sn, idx) => {
+        const pos = (sn.p || []).map(t => `<span class="pos-tag">${escapeHtml(posLabel(t))}</span>`).join('');
+        const exs = (sn.e || []).map(([jp, en]) => `
+          <div class="example-box">
+            <div class="ex-jp"><span>${escapeHtml(jp)}</span>
+              <button class="mini-speak" title="朗讀例句" data-speak="${escapeHtml(jp)}">${SPEAKER_SVG.replace(/width="17" height="17"/, 'width="15" height="15"')}</button>
+            </div>
+            <div class="ex-en">${escapeHtml(en)}</div>
+          </div>`).join('');
+        return `<div class="sense-item"><span class="sense-no">${idx + 1}</span>${pos}<span class="en-gloss">${escapeHtml(sn.g.join('; '))}</span>${exs}</div>`;
+      }).join('');
+
+      const conj = buildConjugation(entry);
+      let conjHtml = '';
+      if (conj) {
+        conjHtml = `
+          <section class="detail-section">
+            <h3 class="detail-h">變化形 <span class="detail-h-sub">${escapeHtml(conj.title)}</span></h3>
+            <div class="conj-table">
+              ${conj.rows.map(r => {
+                const main = r.written || r.reading;
+                const sub = (r.written && r.reading && r.reading !== r.written) ? `<div class="conj-reading">${escapeHtml(r.reading)}</div>` : '';
+                const sp = r.reading || r.written;
+                return `<div class="conj-row">
+                  <div class="conj-label">${escapeHtml(r.label)}</div>
+                  <div class="conj-form"><div class="conj-main">${escapeHtml(main)}</div>${sub}</div>
+                  <button class="mini-speak" title="朗讀" data-speak="${escapeHtml(sp)}">${SPEAKER_SVG.replace(/width="17" height="17"/, 'width="15" height="15"')}</button>
+                </div>`;
+              }).join('')}
+            </div>
+            <p class="conj-note">變化形由規則自動產生，罕見詞或特殊用法請以辭典為準。</p>
+          </section>`;
+      }
+
+      page.innerHTML = `
+        <button class="back-btn" id="detailBack">‹ 返回</button>
+        <article class="word-card detail-head">
+          <div class="card-header">
+            <div class="word-title-group">
+              ${kanjis.length > 0 ? `<div class="kana-reading">${escapeHtml(primaryReading)}</div>` : ''}
+              <div class="kanji-main detail-title">
+                <span>${escapeHtml(primaryWord)}</span>
+                ${isCommon ? '<span class="common-badge">常用</span>' : ''}
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
+              <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" id="detailFav" title="${fav ? '取消收藏' : '加入收藏'}">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+              </button>
+            </div>
+          </div>
+          ${formsHtml}
+          ${zhHtml}
+        </article>
+        <section class="detail-section">
+          <h3 class="detail-h">釋義與例句</h3>
+          <div class="senses-list detail-senses">${sensesHtml}</div>
+        </section>
+        ${conjHtml}
+      `;
+
+      page.querySelector('#detailBack').addEventListener('click', () => {
+        if (history.state && history.state.detail) history.back();
+        else { closeDetail(); renderCurrentView(); window.scrollTo(0, savedScrollY); }
+      });
+      page.querySelector('#detailFav').addEventListener('click', () => toggleFavorite(entry));
+      page.querySelectorAll('[data-speak]').forEach(btn => {
+        btn.addEventListener('click', () => speakJapanese(btn.getAttribute('data-speak')));
+      });
+      return page;
     }
 
     function speakJapanese(text) {
@@ -673,7 +1030,13 @@
           </div>
           ${zhHtml}
           <div class="senses-list">${sensesHtml}</div>
+          <div class="card-more">詳細頁・變化形 ›</div>
         `;
+        card.classList.add('clickable');
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('button')) return;
+          openDetail(entry);
+        });
 
         card.querySelector('.fav-btn').addEventListener('click', () => toggleFavorite(entry));
         card.querySelectorAll('[data-speak]').forEach(btn => {
@@ -688,6 +1051,7 @@
 
     function performSearch(query, saveHist = true) {
       clearBtn.style.display = query ? 'flex' : 'none';
+      closeDetail();
       const token = ++searchToken;
       clearTimeout(translateTimer);
       currentSearchOutput = executeSmartSearch(query);
@@ -713,6 +1077,7 @@
     }
 
     function switchTab(tab) {
+      closeDetail();
       currentTab = tab;
       document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
@@ -723,6 +1088,11 @@
     function renderCurrentView() {
       strategyArea.innerHTML = '';
       mainContent.innerHTML = '';
+
+      if (currentDetail) {
+        mainContent.appendChild(renderDetailPage(currentDetail));
+        return;
+      }
 
       if (currentTab === 'search') {
         if (!isDbReady) return;
