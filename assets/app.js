@@ -490,9 +490,6 @@
     window.addEventListener('pagehide', () => {
       flushCloudSyncPush();
     });
-    window.addEventListener('online', () => {
-      flushCloudSyncPush();
-    });
 
     async function handleAuthenticatedUser(user) {
       updateAccountUi(user);
@@ -535,7 +532,7 @@
 
     async function triggerGoogleSignIn() {
       if (!firebaseRuntime) {
-        showToast('尚未設定雲端同步，目前僅儲存在本機');
+        alert('尚未設定 Firebase 雲端專案（請先於 assets/firebase-config.js 填入專案設定），目前維持本機離線儲存。');
         return;
       }
       const { auth, modules } = firebaseRuntime;
@@ -555,10 +552,10 @@
           try {
             await modules.signInWithRedirect(auth, provider);
           } catch (redirErr) {
-            showToast('Google 登入失敗，請稍後再試', { type: 'error' });
+            alert('Google 登入失敗，請稍後再試。');
           }
         } else {
-          showToast('登入失敗，請確認網路連線', { type: 'error' });
+          alert('Google 登入失敗，請確認網路與網域設定。');
         }
       }
     }
@@ -623,103 +620,6 @@
     };
 
     let currentTab = 'search';
-    // 搜尋結果最多保留 RESULT_CAP 筆；畫面每次顯示 RESULT_PAGE 筆，其餘用「顯示更多」展開
-    const RESULT_CAP = 300;
-    const RESULT_PAGE = 50;
-
-    // ===== 通知與確認：Toast（只通知）／底部彈窗（需要做決定）=====
-    let toastTimer = null;
-    function showToast(message, opts) {
-      opts = opts || {};
-      const type = opts.type || 'info';               // 'info' | 'error'
-      const duration = opts.duration || (type === 'error' ? 4500 : 2600);
-      let host = document.getElementById('toastHost');
-      if (!host) {
-        host = document.createElement('div');
-        host.id = 'toastHost';
-        host.className = 'toast-host';
-        host.setAttribute('role', 'status');
-        host.setAttribute('aria-live', 'polite');
-        document.body.appendChild(host);
-      }
-      clearTimeout(toastTimer);
-      host.innerHTML = '';
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 'toast toast-' + type;
-      el.textContent = message;
-      el.title = '點一下關閉';
-      const close = () => {
-        el.classList.remove('is-in');
-        setTimeout(() => { if (el.parentNode) el.remove(); }, 200);
-      };
-      el.addEventListener('click', () => { clearTimeout(toastTimer); close(); });
-      host.appendChild(el);
-      requestAnimationFrame(() => el.classList.add('is-in'));
-      toastTimer = setTimeout(close, duration);
-    }
-
-    // 回傳 Promise<boolean>。danger=true 時，「取消」是主要按鈕（防誤觸），確認鍵用警示色。
-    function showConfirm(opts) {
-      opts = opts || {};
-      return new Promise((resolve) => {
-        const prevFocus = document.activeElement;
-        const overlay = document.createElement('div');
-        overlay.className = 'sheet-overlay';
-        const sheet = document.createElement('div');
-        sheet.className = 'sheet';
-        sheet.setAttribute('role', 'dialog');
-        sheet.setAttribute('aria-modal', 'true');
-        sheet.setAttribute('aria-labelledby', 'sheetTitle');
-        const danger = !!opts.danger;
-        sheet.innerHTML =
-          `<div class="sheet-title" id="sheetTitle">${escapeHtml(opts.title || '')}</div>` +
-          (opts.message ? `<div class="sheet-msg">${escapeHtml(opts.message)}</div>` : '') +
-          `<div class="sheet-actions${danger ? ' is-danger' : ''}">` +
-            `<button type="button" class="sheet-btn sheet-cancel">${escapeHtml(opts.cancelText || '取消')}</button>` +
-            `<button type="button" class="sheet-btn sheet-ok">${escapeHtml(opts.confirmText || '確定')}</button>` +
-          `</div>`;
-        overlay.appendChild(sheet);
-        document.body.appendChild(overlay);
-        requestAnimationFrame(() => overlay.classList.add('is-in'));
-
-        let done = false;
-        const finish = (val) => {
-          if (done) return;
-          done = true;
-          document.removeEventListener('keydown', onKey, true);
-          overlay.classList.remove('is-in');
-          setTimeout(() => overlay.remove(), 200);
-          try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch (e) {}
-          resolve(val);
-        };
-        const onKey = (e) => {
-          if (e.key === 'Escape') { e.preventDefault(); finish(false); }
-        };
-        document.addEventListener('keydown', onKey, true);
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(false); });
-        sheet.querySelector('.sheet-cancel').addEventListener('click', () => finish(false));
-        sheet.querySelector('.sheet-ok').addEventListener('click', () => finish(true));
-        // 預設把焦點放在較安全的按鈕
-        setTimeout(() => sheet.querySelector(danger ? '.sheet-cancel' : '.sheet-ok').focus(), 30);
-      });
-    }
-
-    function confirmAbandonQuiz() {
-      showConfirm({
-        title: '要離開小考嗎？',
-        message: '進度不會保留，下次重新出題。',
-        confirmText: '離開',
-        cancelText: '繼續作答',
-        danger: true
-      }).then((ok) => {
-        if (!ok) return;
-        activeQuizState = null;
-        syncQuizLockClass();
-        goHomeSearch();
-      });
-    }
-
     let currentSearchOutput = { mode: 'empty', results: [], note: '' };
     const searchInput = document.getElementById('searchInput');
     const clearBtn = document.getElementById('clearBtn');
@@ -731,7 +631,7 @@
     const histCountEl = document.getElementById('histCount');
 
     // 版本號需與 sw.js 的 CACHE_NAME 相同；更換 data 檔案後兩邊一起加 1
-    const CACHE_NAME = 'yukiyosei-v21';
+    const CACHE_NAME = 'yukiyosei-v17';
 
     function formatMB(bytes) {
       return (bytes / 1048576).toFixed(1) + ' MB';
@@ -846,7 +746,7 @@
             zhBridge = parsed;
           }
         } catch (err) {
-          showToast(`讀取 ${file.name} 失敗，請確認是正確的 JSON 檔`, { type: 'error' });
+          alert(`讀取 ${file.name} 失敗，請確認選擇正確的 JSON 檔案。`);
         }
       }
       if (isDbReady) {
@@ -989,7 +889,7 @@
         badge: '數字 → 日文',
         note: `「${q}」的日文數字寫法與讀法`,
         numberInfo: info,
-        results: [...byKanji, ...byGloss].slice(0, RESULT_CAP)
+        results: [...byKanji, ...byGloss].slice(0, 50)
       };
     }
 
@@ -1680,12 +1580,12 @@
       const order = (a, b) => (b.entry[2] - a.entry[2]) || (a.len - b.len) || (b.s - a.s);
       hits.sort(order);
       // 同長度的詞很多時，前段候選再加上例句語料次數細排（今日 ＞ 境〔さかい／きょう〕）
-      const head = hits.slice(0, Math.max(150, RESULT_CAP));
+      const head = hits.slice(0, 150);
       head.forEach(h => { h.s += entryFreqScore(h.entry) * (h.idx > 0 ? 0.35 : 1); });
       head.sort(order);
-      const results = head.slice(0, RESULT_CAP).map(h => h.entry);
+      const results = head.slice(0, 50).map(h => h.entry);
       const note = hits.length
-        ? `萬用字元「${pattern}」（? 任意 1 字、* 任意長度）：共 ${hits.length} 筆，優先列出常用與較短的詞${hits.length > RESULT_CAP ? `，最多列出前 ${RESULT_CAP} 筆` : ''}`
+        ? `萬用字元「${pattern}」（? 任意 1 字、* 任意長度）：共 ${hits.length} 筆，優先列出常用與較短的詞${hits.length > 50 ? '，僅顯示前 50 筆' : ''}`
         : `萬用字元「${pattern}」沒有符合的日文詞條（比對範圍：漢字表記與假名讀音）`;
       return { ...base, results, note };
     }
@@ -1740,11 +1640,11 @@
       deTop.forEach(h => inflections.set(h.entry, { surface: q, base: h.base, path: h.path }));
 
       const results = [
-        ...exactRanked.slice(0, RESULT_CAP),
+        ...exactRanked.slice(0, 50),
         ...deTop.map(h => h.entry),
         ...prefix,
         ...partial
-      ].slice(0, RESULT_CAP);
+      ].slice(0, 60);
 
       const bases = [...new Set(deTop.map(h => h.base))].slice(0, 3);
       let note = meta.romaji ? `羅馬拼音「${meta.romaji}」→ ${q}` : `直接比對日文讀音與表記「${q}」`;
@@ -1805,7 +1705,7 @@
         mode: 'en',
         badge: '英文 → 日文與發音',
         note: `搜尋英文釋義包含「${q}」的日文單字（完全相同的釋義排最前面）`,
-        results: scored.slice(0, RESULT_CAP).map(x => x[1]),
+        results: scored.slice(0, 50).map(x => x[1]),
         strong
       };
     }
@@ -2564,7 +2464,7 @@
             mode: 'jp',
             badge: '漢字優先（命中日文漢字）',
             note: `日文辭典中直接收錄「${q}」`,
-            results: [...rankByCoreScore(jpExact, [q]), ...jpPartial].slice(0, RESULT_CAP)
+            results: [...rankByCoreScore(jpExact, [q]), ...jpPartial].slice(0, 50)
           };
         }
 
@@ -2631,7 +2531,7 @@
           note: keywords.length > 0
             ? `日文無此漢字，已透過英文橋接詞（${keywords.slice(0, 3).join(', ')}）找出對應日文`
             : `日文無此漢字，嘗試以中文語意反查「${q}」`,
-          results: [...rankedExact, ...rankedPartial, ...rankedTags].slice(0, RESULT_CAP)
+          results: [...rankedExact, ...rankedPartial, ...rankedTags].slice(0, 50)
         };
       }
 
@@ -3065,7 +2965,7 @@
 
     function speakJapanese(text) {
       if (!('speechSynthesis' in window)) {
-        showToast('此瀏覽器不支援語音朗讀', { type: 'error' });
+        alert('您的瀏覽器不支援語音朗讀功能。');
         return;
       }
       window.speechSynthesis.cancel();
@@ -3158,8 +3058,7 @@
         .replace(/"/g, '&quot;');
     }
 
-    function renderWordCards(entries, notes, opts) {
-      opts = opts || {};
+    function renderWordCards(entries, notes) {
       if (!entries || entries.length === 0) {
         return `<div class="empty-state">
           <strong>找不到相符的單字</strong>
@@ -3174,7 +3073,7 @@
       let lastGroup = '';
       const surfaceText = grouped ? [...notes.values()][0].surface : '';
 
-      const appendCard = (entry) => {
+      entries.forEach((entry) => {
         if (grouped) {
           const grp = notes.has(entry) ? 'infl' : (lastGroup === 'infl' || lastGroup === 'other' ? 'other' : 'exact');
           if (grp !== lastGroup) {
@@ -3249,42 +3148,8 @@
           btn.addEventListener('click', () => speakJapanese(btn.getAttribute('data-speak')));
         });
 
-        if (pager) container.insertBefore(card, pager); else container.appendChild(card);
-      };
-
-      // 分頁：先顯示 RESULT_PAGE 筆，其餘按「顯示更多」
-      let shown = 0;
-      let pager = null;
-      const renderNext = () => {
-        const end = Math.min(entries.length, shown + RESULT_PAGE);
-        for (; shown < end; shown++) appendCard(entries[shown]);
-        updatePager();
-      };
-      const updatePager = () => {
-        const total = entries.length;
-        if (total <= RESULT_PAGE) return;
-        if (!pager) {
-          pager = document.createElement('div');
-          pager.className = 'more-wrap';
-          container.appendChild(pager);
-        }
-        const left = total - shown;
-        if (left > 0) {
-          pager.innerHTML = `<div class="more-hint">已顯示 ${shown} / ${total} 筆</div>` +
-            `<button type="button" class="more-btn">顯示更多（還有 ${left} 筆）</button>`;
-          pager.querySelector('.more-btn').addEventListener('click', renderNext);
-        } else {
-          const capped = opts.cap && total >= opts.cap;
-          pager.innerHTML = `<div class="more-hint">已顯示全部 ${total} 筆${capped ? '，結果已達上限，請輸入更精確的關鍵字' : ''}</div>`;
-        }
-      };
-      renderNext();
-      if (!pager && opts.cap && entries.length >= opts.cap) {
-        pager = document.createElement('div');
-        pager.className = 'more-wrap';
-        pager.innerHTML = `<div class="more-hint">結果已達上限，請輸入更精確的關鍵字</div>`;
-        container.appendChild(pager);
-      }
+        container.appendChild(card);
+      });
 
       return container;
     }
@@ -3748,7 +3613,7 @@
               <span class="mode-tag mode-jp">斷詞模式</span>
             </div>
           `;
-          const rendered = renderWordCards(tokOut.results, tokOut.inflections, { cap: RESULT_CAP });
+          const rendered = renderWordCards(tokOut.results, tokOut.inflections);
           if (typeof rendered === 'string') mainContent.innerHTML += rendered;
           else mainContent.appendChild(rendered);
           return;
@@ -3791,7 +3656,7 @@
           mainContent.appendChild(renderNumberCard(out.numberInfo));
         }
         if (out.results.length > 0 || out.mode !== 'num') {
-          const rendered = renderWordCards(out.results, out.inflections, { cap: RESULT_CAP });
+          const rendered = renderWordCards(out.results, out.inflections);
           if (typeof rendered === 'string') mainContent.innerHTML += rendered;
           else mainContent.appendChild(rendered);
         }
@@ -3843,58 +3708,21 @@
     }
 
     let debounceTimer = null;
-    let isImeComposing = false;
-    searchInput.addEventListener('compositionstart', () => { isImeComposing = true; });
-    searchInput.addEventListener('compositionend', () => {
-      isImeComposing = false;
-      // 選字完成：以正式搜尋（寫入歷史）取代組字中的暫時搜尋
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => performSearch(searchInput.value, true), 280);
-    });
     searchInput.addEventListener('input', (e) => {
       const val = e.target.value;
       clearBtn.style.display = val ? 'flex' : 'none';
       clearTimeout(debounceTimer);
-      const composing = isImeComposing || e.isComposing;
       debounceTimer = setTimeout(() => {
-        // 組字中仍即時顯示結果（可邊打假名邊查），但先不寫入搜尋歷史
-        performSearch(val, !composing);
+        performSearch(val, true);
       }, 280);
     });
 
     searchInput.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      // 輸入法選字用的 Enter 不觸發搜尋（keyCode 229 為 Safari 在 compositionend 後的情況）
-      if (e.isComposing || e.keyCode === 229 || isImeComposing) return;
-      clearTimeout(debounceTimer);
-      performSearch(searchInput.value, true);
-    });
-
-    // ===== 手機版：往下捲收起標題列與分頁，往上捲再展開（桌機不動作）=====
-    (function setupCollapsibleHeader() {
-      const stickyTop = document.getElementById('stickyTop');
-      const mq = window.matchMedia('(max-width: 640px)');
-      let lastY = window.scrollY, ticking = false;
-      function update() {
-        ticking = false;
-        const y = Math.max(0, window.scrollY);
-        const dy = y - lastY;
-        if (!mq.matches || document.activeElement === searchInput) {
-          stickyTop.classList.remove('is-compact');
-          lastY = y;
-          return;
-        }
-        if (y < 40) stickyTop.classList.remove('is-compact');
-        else if (dy > 8 && y > 120) stickyTop.classList.add('is-compact');
-        else if (dy < -8) stickyTop.classList.remove('is-compact');
-        if (Math.abs(dy) > 8) lastY = y;
+      if (e.key === 'Enter') {
+        clearTimeout(debounceTimer);
+        performSearch(searchInput.value, true);
       }
-      window.addEventListener('scroll', () => {
-        if (!ticking) { ticking = true; requestAnimationFrame(update); }
-      }, { passive: true });
-      mq.addEventListener && mq.addEventListener('change', update);
-      searchInput.addEventListener('focus', () => stickyTop.classList.remove('is-compact'));
-    })();
+    });
 
     clearBtn.addEventListener('click', () => {
       searchInput.value = '';
@@ -3987,49 +3815,9 @@
       scheduleCloudSyncPush();
     }
 
-    const SIMP_ONLY_CHAR_SET = (() => {
-      const s = new Set();
-      TRAD_SIMP_PAIRS.forEach(pair => {
-        if (pair.length % 2 === 0) {
-          const half = pair.length / 2;
-          for (let i = 0; i < half; i++) {
-            if (pair[i] !== pair[i + half]) s.add(pair[i + half]);
-          }
-        }
-      });
-      return s;
-    })();
-
-    const TRAD_ONLY_CHAR_SET = (() => {
-      const s = new Set();
-      TRAD_SIMP_PAIRS.forEach(pair => {
-        if (pair.length % 2 === 0) {
-          const half = pair.length / 2;
-          for (let i = 0; i < half; i++) {
-            if (pair[i] !== pair[i + half]) s.add(pair[i]);
-          }
-        }
-      });
-      return s;
-    })();
-
-    function scoreTraditionalChinese(str) {
-      let score = 0;
-      for (const ch of String(str || '')) {
-        if (TRAD_ONLY_CHAR_SET.has(ch)) score += 2;
-        if (SIMP_ONLY_CHAR_SET.has(ch)) score -= 3;
-      }
-      return score;
-    }
-
     function getCleanZhList(entry) {
       const zhs = (entry && entry[4]) || [];
-      const filtered = zhs.filter(z => z && !/[㐀-䶿]/.test(z));
-      if (filtered.length <= 1) return filtered;
-      return filtered
-        .map((text, idx) => ({ text, idx, score: scoreTraditionalChinese(text) }))
-        .sort((a, b) => (b.score - a.score) || (a.idx - b.idx))
-        .map(item => item.text);
+      return zhs.filter(z => z && !/[㐀-䶿]/.test(z));
     }
 
     function hasValidQuizZh(entry) {
@@ -4400,9 +4188,7 @@
       return accepted.has(raw) || accepted.has(userHira) || accepted.has(userKata);
     }
 
-    // ===== 錯題庫區塊（顯示於「我的收藏」分頁下方，支援收合、單筆刪除與清空）=====
-    let isWrongBankCollapsed = false;
-
+    // ===== 錯題庫區塊（顯示於「我的收藏」分頁下方，支援單筆刪除與清空）=====
     function clearWrongBank() {
       const now = Date.now();
       const nextItems = {};
@@ -4432,29 +4218,13 @@
       const header = document.createElement('div');
       header.className = 'wrong-bank-header';
       header.innerHTML = `
-        <button class="wrong-bank-toggle" id="toggleWrongBankBtn" type="button" aria-expanded="${!isWrongBankCollapsed}">
-          <span class="wrong-bank-chevron${isWrongBankCollapsed ? ' is-collapsed' : ''}" aria-hidden="true">▾</span>
+        <h3 class="wrong-bank-title">
           <span>錯題庫</span>
           ${resolved.length > 0 ? `<span class="wrong-bank-count">${resolved.length}</span>` : ''}
-        </button>
-        <div class="wrong-bank-header-actions">
-          ${resolved.length > 0 ? `<button class="text-btn" id="collapseWrongBankTextBtn" type="button">${isWrongBankCollapsed ? '展開' : '收合'}</button>` : ''}
-          ${resolved.length > 0 ? `<button class="text-btn" id="clearWrongBankBtn" type="button">清空錯題</button>` : ''}
-        </div>
+        </h3>
+        ${resolved.length > 0 ? `<button class="text-btn" id="clearWrongBankBtn" type="button">清空錯題</button>` : ''}
       `;
       section.appendChild(header);
-
-      const toggleCollapse = () => {
-        isWrongBankCollapsed = !isWrongBankCollapsed;
-        renderCurrentView();
-      };
-      header.querySelector('#toggleWrongBankBtn').addEventListener('click', toggleCollapse);
-      const colTextBtn = header.querySelector('#collapseWrongBankTextBtn');
-      if (colTextBtn) colTextBtn.addEventListener('click', toggleCollapse);
-
-      if (isWrongBankCollapsed) {
-        return section;
-      }
 
       if (resolved.length === 0) {
         const empty = document.createElement('div');
@@ -4706,9 +4476,6 @@
           ${promptHtml}
           ${bodyHtml}
         </article>
-        <div class="quiz-exit-wrap">
-          <button class="quiz-exit-link" id="quizAbandonBtn" type="button">結束小考</button>
-        </div>
       `;
 
       wrap.querySelectorAll('[data-speak]').forEach(btn => {
@@ -4755,12 +4522,6 @@
         }
         wrap.querySelector('#quizSubmitBtn').addEventListener('click', () => handleEvaluate(false));
         wrap.querySelector('#quizRevealBtn').addEventListener('click', () => handleEvaluate(true));
-        const abandonBtnUnans = wrap.querySelector('#quizAbandonBtn');
-        if (abandonBtnUnans) {
-          abandonBtnUnans.addEventListener('click', () => {
-            confirmAbandonQuiz();
-          });
-        }
       } else {
         const favBtn = wrap.querySelector('#quizRevealFavBtn');
         if (favBtn) {
@@ -4769,12 +4530,6 @@
             const nowFav = isFavorite(entry);
             favBtn.classList.toggle('is-fav', nowFav);
             favBtn.textContent = nowFav ? '♥ 已收藏' : '♡ 收藏';
-          });
-        }
-        const abandonBtn = wrap.querySelector('#quizAbandonBtn');
-        if (abandonBtn) {
-          abandonBtn.addEventListener('click', () => {
-            confirmAbandonQuiz();
           });
         }
         const nextBtn = wrap.querySelector('#quizNextBtn');
@@ -4821,7 +4576,7 @@
         </div>
 
         <div class="quiz-summary-actions">
-          <button class="quiz-btn-primary" id="quizBackHomeBtn" type="button">回首頁</button>
+          <button class="quiz-btn-primary" id="quizBackHomeBtn" type="button">返回辭書首頁</button>
         </div>
       `;
 
@@ -4851,12 +4606,9 @@
           triggerGoogleSignIn();
         } else {
           const label = currentCloudUser.email || currentCloudUser.displayName || '此 Google 帳號';
-          showConfirm({
-            title: '要登出嗎？',
-            message: `目前登入帳號：${label}`,
-            confirmText: '登出',
-            cancelText: '取消'
-          }).then((ok) => { if (ok) triggerGoogleSignOut(); });
+          if (confirm(`目前登入帳號：${label}\n確定要登出嗎？`)) {
+            triggerGoogleSignOut();
+          }
         }
       });
     }
