@@ -1,10 +1,11 @@
 /* 雪妖精の辭書 — Service Worker
  * 更換 data 檔案或大幅改版時，請同步把這裡與 assets/app.js 的 CACHE_NAME 版本號一起加 1。 */
-const CACHE_NAME = 'yukiyosei-v1';
+const CACHE_NAME = 'yukiyosei-v21';
 
 const SHELL = [
   './',
   './index.html',
+  './assets/firebase-config.js',
   './assets/app.js',
   './assets/style.css',
   './manifest.webmanifest',
@@ -15,7 +16,10 @@ const SHELL = [
   './icons/apple-touch-icon.png?v=2',
   './icons/favicon-32.png?v=2',
   './icons/logo-72.png?v=2',
-  './icons/logo-108.png?v=2'
+  './icons/logo-108.png?v=2',
+  './icons/avatar-guest.png',
+  './icons/avatar-user.png',
+  './icons/celebrate-bird.png'
 ];
 
 self.addEventListener('install', (event) => {

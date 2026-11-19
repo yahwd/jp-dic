@@ -54,6 +54,8 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      cursor: pointer;
+      user-select: none;
     }
 
     .brand-logo {
@@ -225,8 +227,10 @@
     }
 
     .tab-btn.active {
-      background: var(--accent);
-      color: #FFFFFF;
+      background: transparent;
+      color: var(--accent);
+      border-radius: 0;
+      box-shadow: inset 0 -2px 0 var(--accent);
     }
 
     .badge {
@@ -237,8 +241,8 @@
     }
 
     .tab-btn.active .badge {
-      background: rgba(255, 255, 255, 0.22);
-      color: #FFFFFF;
+      background: var(--accent-light);
+      color: var(--accent);
     }
 
     .strategy-banner {
@@ -272,16 +276,16 @@
     .word-list {
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 10px;
     }
 
     .word-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 18px 20px;
+      padding: 13px 16px;
       box-shadow: var(--shadow-sm);
-      transition: box-shadow 0.15s;
+      transition: box-shadow 0.15s, border-color 0.15s;
     }
 
     .word-card:hover {
@@ -293,7 +297,11 @@
       justify-content: space-between;
       align-items: flex-start;
       gap: 12px;
-      margin-bottom: 10px;
+      margin-bottom: 0;
+    }
+
+    .card-header.has-below {
+      margin-bottom: 8px;
     }
 
     .word-title-group {
@@ -371,19 +379,49 @@
     }
 
     .zh-meanings {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
+      display: block;
+      line-height: 1.7;
       margin-bottom: 12px;
     }
 
+    .word-list .zh-meanings.zh-compact {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 0;
+      line-height: 1.5;
+    }
+
+    .word-list .zh-meanings.zh-compact .zh-pill {
+      font-size: 0.9rem;
+    }
+
+    .card-gloss-fallback {
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.45;
+    }
+
     .zh-pill {
-      background: var(--tag-zh-bg);
-      color: var(--tag-zh-text);
-      font-size: 0.88rem;
+      display: inline;
+      background: none;
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      font-weight: 400;
+      padding: 0;
+    }
+    .zh-pill:not(:last-child)::after {
+      content: "；";
+      color: var(--text-muted);
+    }
+    .zh-pill:first-child {
+      color: var(--text-primary);
       font-weight: 500;
-      padding: 3px 10px;
-      border-radius: 6px;
     }
 
     .senses-list {
@@ -644,4 +682,1005 @@
     .db-status.clickable:hover { background: var(--surface-subtle); }
 
     /* ===== 每日精選 ===== */
-    .daily-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin: 0 0 12px; }
+        .db-status.is-hidden { display: none; }
+    .daily-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+    .daily-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin: 0; }
+    .daily-refresh {
+      font: inherit; font-size: 0.82rem; color: var(--text-secondary);
+      background: none; border: none; padding: 4px 8px; margin-right: -8px;
+      border-radius: 8px; cursor: pointer; white-space: nowrap;
+    }
+    .daily-refresh:hover { color: var(--accent); background: var(--accent-light); }
+    .daily-refresh:active { background: var(--surface-subtle); }
+    .daily-list { gap: 10px; }
+    .daily-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px 12px 18px; }
+    .daily-main { min-width: 0; flex: 1; }
+    .daily-word {
+      font-family: 'Noto Sans JP', sans-serif; font-size: 1.35rem; font-weight: 700;
+      color: var(--text-primary); line-height: 1.2; overflow-wrap: anywhere;
+    }
+    .daily-word ruby { ruby-position: over; }
+    .daily-word rt {
+      font-size: 0.5em; font-weight: 500; color: var(--accent); letter-spacing: 0.02em;
+    }
+    .daily-gloss {
+      margin-top: 5px; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .daily-card .card-actions { flex-shrink: 0; }
+
+    /* ===== 斷詞膠囊列與逐詞對照一覽 ===== */
+    .segment-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      padding: 2px 0;
+    }
+
+    .seg-label {
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      margin-right: 2px;
+      flex-shrink: 0;
+    }
+
+    .seg-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 12px;
+      border-radius: 99px;
+      font-size: 0.85rem;
+      font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      line-height: 1.35;
+      transition: all 0.15s ease;
+    }
+
+    .seg-pill:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+
+    .seg-pill.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #FFFFFF;
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(38, 57, 100, 0.22);
+    }
+
+    .seg-pill.is-particle:not(.active) {
+      background: var(--surface-subtle);
+      color: var(--text-muted);
+    }
+
+    .seg-overview-list {
+      gap: 10px;
+    }
+
+    .seg-overview-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px 16px 13px 18px;
+    }
+
+    .seg-overview-card.is-particle {
+      background: #FAFBFD;
+    }
+
+    .seg-card-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .seg-card-reading {
+      font-size: 0.8rem;
+      color: var(--accent);
+      font-weight: 500;
+      font-family: 'Noto Sans JP', sans-serif;
+      line-height: 1.25;
+    }
+
+    .seg-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.3;
+    }
+
+    .seg-card-title .pos-tag {
+      margin-right: 0;
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      font-weight: 600;
+    }
+
+    .seg-card-surface {
+      font-size: 0.76rem;
+      font-weight: 400;
+      color: var(--text-muted);
+      font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif;
+    }
+
+    .seg-card-gloss {
+      margin-top: 3px;
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .seg-card-gloss.is-grammar {
+      color: var(--tag-jp-text);
+      font-size: 0.84rem;
+    }
+
+    .seg-exact-link {
+      margin-top: 14px;
+      padding: 4px 2px;
+      color: var(--text-secondary);
+      font-size: 0.84rem;
+    }
+
+    .seg-exact-link:hover {
+      color: var(--accent);
+    }
+
+
+    /* ===== 每日小考入口提示圓點 ===== */
+    .quiz-entry-btn {
+      position: relative;
+    }
+
+    .quiz-pending-dot {
+      position: absolute;
+      top: 5px;
+      right: 6px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: var(--fav-active);
+      box-shadow: 0 0 0 2px var(--bg);
+      pointer-events: none;
+    }
+
+    /* ===== 每日小考獨立頁面視圖 ===== */
+    .quiz-view {
+      padding-top: 2px;
+    }
+
+    .quiz-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .quiz-view-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .quiz-progress-text {
+      font-size: 0.92rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+    }
+
+    .quiz-progress-track {
+      width: 100%;
+      height: 3px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    .quiz-progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      transition: width 0.25s ease;
+    }
+
+    /* 單卡作答區 */
+    .quiz-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 22px 26px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .quiz-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .quiz-prompt-col {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .quiz-mode-hint {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+      margin-bottom: 14px;
+    }
+
+    .quiz-mode-dir {
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .quiz-prompt-jp-kana {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      font-family: 'Noto Sans JP', sans-serif;
+      margin-bottom: 2px;
+    }
+
+    .quiz-prompt-jp-main {
+      font-size: 2.15rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: 'Noto Sans JP', sans-serif;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+
+    .quiz-prompt-zh {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    .quiz-speak-box {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+    }
+
+    .quiz-speak-box:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+
+    /* 輸入框與送出區 */
+    .quiz-input-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .quiz-answer-input {
+      width: 100%;
+      background: var(--surface);
+      border: 1.5px solid var(--accent);
+      border-radius: 12px;
+      padding: 13px 16px;
+      font-size: 1rem;
+      color: var(--text-primary);
+      font-family: inherit;
+      outline: none;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+
+    .quiz-answer-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .quiz-answer-input:focus {
+      box-shadow: 0 0 0 3px rgba(38, 57, 100, 0.12);
+    }
+
+    .quiz-btn-primary {
+      width: 100%;
+      background: var(--accent);
+      color: #FFFFFF;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 18px;
+      font-size: 0.98rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+
+    .quiz-btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .quiz-btn-secondary {
+      background: var(--surface);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 16px;
+      font-size: 0.94rem;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .quiz-btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+
+    .quiz-skip-link {
+      align-self: center;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      font-family: inherit;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .quiz-skip-link:hover {
+      color: var(--accent);
+    }
+
+    /* 作答後結果與正解區 */
+    .quiz-result-status {
+      margin-bottom: 16px;
+    }
+
+    .quiz-status-line {
+      font-size: 1.05rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .quiz-status-line.is-correct {
+      color: #2E7D5B;
+    }
+
+    .quiz-status-line.is-wrong {
+      color: #C53030;
+    }
+
+    .quiz-status-meta {
+      margin-top: 5px;
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+    }
+
+    .quiz-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 0 16px;
+    }
+
+    .quiz-answer-section {
+      margin-bottom: 22px;
+    }
+
+    .quiz-answer-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .quiz-answer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .quiz-answer-main-group {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .quiz-answer-reading {
+      font-size: 0.86rem;
+      color: var(--accent);
+      font-weight: 500;
+      font-family: 'Noto Sans JP', sans-serif;
+      margin-bottom: 1px;
+    }
+
+    .quiz-answer-text {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
+    .quiz-answer-subzh {
+      margin-top: 3px;
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+    }
+
+    .quiz-answer-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .quiz-fav-text-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      font-family: inherit;
+      padding: 6px 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      transition: color 0.15s;
+    }
+
+    .quiz-fav-text-btn:hover {
+      color: var(--accent);
+    }
+
+    .quiz-fav-text-btn.is-fav {
+      color: var(--fav-active);
+      font-weight: 500;
+    }
+
+    /* 結算畫面 */
+    .quiz-summary-hero {
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 16px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .quiz-summary-score {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .quiz-summary-label {
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .quiz-summary-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .quiz-summary-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 11px 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .quiz-summary-word {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .quiz-summary-jp {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: 'Noto Sans JP', sans-serif;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .quiz-summary-reading {
+      font-size: 0.78rem;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .quiz-summary-zh {
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .quiz-status-tag {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+    }
+
+    .quiz-status-tag.ok {
+      background: #E6F4EE;
+      color: #2E7D5B;
+    }
+
+    .quiz-status-tag.miss {
+      background: #FDF2F2;
+      color: var(--fav-active);
+    }
+
+    .quiz-summary-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .quiz-summary-actions .quiz-btn-secondary {
+      flex: 0 0 auto;
+    }
+
+    .quiz-summary-actions .quiz-btn-primary {
+      flex: 1;
+    }
+
+    @media (max-width: 480px) {
+      .quiz-card { padding: 20px 18px 22px; }
+      .quiz-prompt-jp-main { font-size: 1.95rem; }
+    }
+
+    /* ===== 結算頁小鳥主角大圖與極簡樣式 ===== */
+    .quiz-summary-hero {
+      text-align: center;
+      background: linear-gradient(180deg, #E8EDF6 0%, var(--surface) 68%);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 34px 20px 30px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .quiz-summary-mascot-wrap {
+      width: 152px;
+      height: 152px;
+      margin: 0 auto 16px;
+      border-radius: 28px;
+      overflow: hidden;
+      background: #E8EDF6;
+      box-shadow: 0 8px 20px rgba(38, 57, 100, 0.08);
+      animation: birdHeroPop 0.55s cubic-bezier(0.22, 1.25, 0.36, 1) both;
+    }
+
+    .quiz-summary-mascot {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      animation: birdGentleBob 3.2s ease-in-out 0.6s infinite;
+    }
+
+    @keyframes birdHeroPop {
+      0% { opacity: 0; transform: scale(0.84) translateY(10px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    @keyframes birdGentleBob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+
+    .quiz-summary-title {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+      letter-spacing: -0.01em;
+    }
+
+    .quiz-summary-score {
+      font-size: 1.02rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ===== 收藏分頁下方的錯題庫區塊 ===== */
+    .wrong-bank-section {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .wrong-bank-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .wrong-bank-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .wrong-bank-count {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 99px;
+      background: var(--surface-subtle);
+      color: var(--text-secondary);
+    }
+
+    .icon-btn.del-wrong-btn:hover {
+      border-color: #F5C6C5;
+      color: var(--fav-active);
+      background: #FDF2F2;
+    }
+
+    /* ===== 測驗作答鎖定模式（隱藏搜尋框與分頁列，防止查字典作弊）===== */
+    body.quiz-locked .search-wrapper,
+    body.quiz-locked .tabs {
+      display: none !important;
+    }
+
+    body.quiz-locked .sticky-top {
+      padding-bottom: 12px;
+    }
+
+    body.quiz-locked .brand {
+      cursor: default;
+    }
+
+    /* ===== 頂部右側帳號雲端同步按鈕與極簡小卡片 ===== */
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .account-wrap {
+      position: relative;
+    }
+
+    .account-btn {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #DBD7D6;
+      border: 1.5px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+    }
+
+    .account-btn:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(38, 57, 100, 0.12);
+    }
+
+    .account-btn.is-signed-in {
+      border-color: #C7B6D4;
+      background: #D5C5E0;
+    }
+
+    .account-btn.is-signed-in:hover {
+      box-shadow: 0 0 0 3px rgba(213, 197, 224, 0.45);
+    }
+
+    .account-avatar-img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .account-sync-badge {
+      position: absolute;
+      right: -1px;
+      bottom: -1px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: #38A169;
+      border: 2px solid var(--bg);
+      pointer-events: none;
+    }
+
+    .account-sync-badge.is-syncing {
+      background-color: #D69E2E;
+      animation: pulse 1.1s infinite;
+    }
+
+    .account-popover {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 120;
+      min-width: 230px;
+      max-width: 280px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      box-shadow: 0 10px 28px rgba(27, 33, 48, 0.12);
+      padding: 14px;
+      animation: popFadeIn 0.15s ease-out;
+    }
+
+    @keyframes popFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .account-pop-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+
+    .account-pop-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #B8C8C4;
+      flex-shrink: 0;
+      display: block;
+    }
+
+    .account-pop-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .account-pop-status {
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #2E7D5B;
+    }
+
+    .account-pop-email {
+      font-size: 0.84rem;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+
+    .account-logout-btn {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .account-logout-btn:hover {
+      border-color: #F5C6C5;
+      color: var(--fav-active);
+      background: #FDF2F2;
+    }
+
+    /* ===== 每日小考放棄出口（防誤觸，不計入今日成績）===== */
+    .quiz-exit-wrap {
+      margin-top: 12px;
+      text-align: center;
+    }
+
+    .quiz-exit-link {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-family: inherit;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .quiz-exit-link:hover {
+      color: var(--text-secondary);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* ===== 錯題庫收合標題列 ===== */
+    .wrong-bank-toggle {
+      background: none;
+      border: none;
+      padding: 4px 2px;
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-family: inherit;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .wrong-bank-toggle:hover {
+      color: var(--accent);
+    }
+
+    .wrong-bank-chevron {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      transition: transform 0.18s ease;
+    }
+
+    .wrong-bank-chevron.is-collapsed {
+      transform: rotate(-90deg);
+    }
+
+    .wrong-bank-header-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+
+/* ===== 顯示更多（搜尋結果分頁）===== */
+.more-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0 4px; }
+.more-hint { font-size: 0.82rem; color: var(--text-muted); text-align: center; }
+.more-btn {
+  font: inherit; font-size: 0.92rem; font-weight: 500; color: var(--accent);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  min-height: 44px; padding: 0 22px; cursor: pointer; width: 100%;
+}
+.more-btn:hover { background: var(--accent-light); border-color: var(--accent); }
+
+/* ===== 手機版：往下捲時收起標題列與分頁 ===== */
+@media (max-width: 640px) {
+  .sticky-top header,
+  .sticky-top .tabs {
+    overflow: hidden;
+    transition: max-height 0.22s ease, opacity 0.18s ease, margin 0.22s ease, padding 0.22s ease;
+  }
+  .sticky-top header { max-height: 90px; }
+  .sticky-top .tabs { max-height: 64px; }
+  .sticky-top { transition: padding 0.22s ease; }
+  .sticky-top.is-compact { padding-top: 10px; }
+  .sticky-top.is-compact header {
+    max-height: 0; opacity: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; pointer-events: none;
+  }
+  .sticky-top.is-compact .tabs {
+    max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; pointer-events: none;
+  }
+  .sticky-top.is-compact .search-wrapper { margin-bottom: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sticky-top, .sticky-top header, .sticky-top .tabs { transition: none !important; }
+}
+
+
+/* ===== Toast（只通知，自動消失）===== */
+.toast-host {
+  position: fixed; left: 0; right: 0; z-index: 300;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex; justify-content: center; padding: 0 16px; pointer-events: none;
+}
+.toast {
+  pointer-events: auto; font: inherit; font-size: 0.9rem; line-height: 1.4;
+  max-width: 420px; text-align: left; cursor: pointer;
+  color: #fff; background: rgba(27, 33, 48, 0.94); border: none;
+  padding: 11px 16px; border-radius: 12px; box-shadow: var(--shadow-md);
+  opacity: 0; transform: translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast.toast-error { background: #A63D3A; }
+.toast.is-in { opacity: 1; transform: translateY(0); }
+
+/* ===== 底部彈窗（需要做決定）===== */
+.sheet-overlay {
+  position: fixed; inset: 0; z-index: 400;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(27, 33, 48, 0.4); opacity: 0; transition: opacity 0.2s ease;
+}
+.sheet-overlay.is-in { opacity: 1; }
+.sheet {
+  width: 100%; max-width: 480px; background: var(--surface);
+  border-radius: 18px 18px 0 0; padding: 22px 20px calc(18px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.15);
+  transform: translateY(24px); transition: transform 0.22s ease;
+}
+.sheet-overlay.is-in .sheet { transform: translateY(0); }
+.sheet-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); }
+.sheet-msg { margin-top: 6px; font-size: 0.92rem; color: var(--text-secondary); line-height: 1.5; overflow-wrap: anywhere; }
+.sheet-actions { display: flex; flex-direction: column-reverse; gap: 10px; margin-top: 20px; }
+.sheet-btn {
+  font: inherit; font-size: 1rem; font-weight: 600; min-height: 48px; border-radius: 12px;
+  cursor: pointer; border: 1.5px solid var(--border); background: var(--surface); color: var(--text-primary);
+}
+.sheet-actions .sheet-ok { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sheet-actions .sheet-cancel { background: var(--surface); border-color: var(--border); color: var(--text-secondary); }
+/* 危險動作：「取消／繼續」是主要按鈕，確認鍵用警示色外框 */
+.sheet-actions.is-danger .sheet-cancel { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sheet-actions.is-danger .sheet-ok { background: var(--surface); border-color: #D9534F; color: #C0392B; }
+.sheet-actions.is-danger { flex-direction: column; }
+@media (min-width: 641px) {
+  .sheet-overlay { align-items: center; }
+  .sheet { border-radius: 18px; padding-bottom: 20px; }
+  .sheet-actions, .sheet-actions.is-danger { flex-direction: row-reverse; }
+  .sheet-btn { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast, .sheet, .sheet-overlay { transition: none !important; }
+}
