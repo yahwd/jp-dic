@@ -38,7 +38,7 @@
     .container {
       max-width: 780px;
       margin: 0 auto;
-      padding: 28px 20px 64px;
+      padding: 0 20px 64px;
     }
 
     header {
@@ -619,3 +619,29 @@
     .tab-btn.icon-tab svg { flex-shrink: 0; }
     .featured-label { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin: 18px 0 10px; }
     .featured-label:first-child { margin-top: 0; }
+
+
+    /* ===== 吸頂 Header（Logo、標題、狀態、搜尋框、分頁）===== */
+    .sticky-top {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      margin: 0 -20px 16px;
+      padding: 18px 20px 0;
+      background: rgba(245, 247, 250, 0.9);
+      -webkit-backdrop-filter: saturate(160%) blur(14px);
+      backdrop-filter: saturate(160%) blur(14px);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 1px 0 rgba(27, 33, 48, 0.02);
+    }
+    .sticky-top header { margin-bottom: 12px; }
+    .sticky-top .search-wrapper { margin-bottom: 10px; }
+    .sticky-top .tabs { border-bottom: none; padding-bottom: 8px; margin-bottom: 0; }
+
+    /* ===== 狀態膠囊 ===== */
+    .db-status { white-space: nowrap; }
+    .db-status.clickable { cursor: pointer; border-color: rgba(229, 62, 62, 0.45); }
+    .db-status.clickable:hover { background: var(--surface-subtle); }
+
+    /* ===== 每日精選 ===== */
+    .daily-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin: 0 0 12px; }
