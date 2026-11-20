@@ -555,22 +555,17 @@
 
     .load-banner {
       margin-top: 24px;
-      padding: 12px 16px;
+      padding: 14px 16px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
-      font-size: 0.82rem;
+      font-size: 0.84rem;
       color: var(--text-secondary);
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
       gap: 10px;
-    }
-
-    .load-banner.is-ready {
-      opacity: 0.82;
-      border-style: dashed;
     }
 
     .file-upload-label {
@@ -1540,184 +1535,4 @@
       border-color: #F5C6C5;
       color: var(--fav-active);
       background: #FDF2F2;
-    }
-
-    /* ===== 每日小考放棄出口（防誤觸，不計入今日成績）===== */
-    .quiz-exit-wrap {
-      margin-top: 12px;
-      text-align: center;
-    }
-
-    .quiz-exit-link {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 0.8rem;
-      font-family: inherit;
-      padding: 4px 10px;
-      cursor: pointer;
-      transition: color 0.15s;
-    }
-
-    .quiz-exit-link:hover {
-      color: var(--text-secondary);
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-
-    /* ===== 錯題庫收合標題列 ===== */
-    .wrong-bank-toggle {
-      background: none;
-      border: none;
-      padding: 4px 2px;
-      margin: 0;
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      font-family: inherit;
-      cursor: pointer;
-      transition: color 0.15s;
-    }
-
-    .wrong-bank-toggle:hover {
-      color: var(--accent);
-    }
-
-    .wrong-bank-chevron {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      transition: transform 0.18s ease;
-    }
-
-    .wrong-bank-chevron.is-collapsed {
-      transform: rotate(-90deg);
-    }
-
-    .wrong-bank-header-actions {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    /* ===== 單字卡複製按鈕與已複製回饋 ===== */
-    .icon-btn.copy-btn.is-copied {
-      border-color: #38A169;
-      color: #2E7D5B;
-      background: #EDF7F2;
-    }
-
-    /* ===== AI 語意拆句增強按鈕與標籤 ===== */
-    .seg-ai-btn {
-      margin-left: auto;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      border-radius: 999px;
-      padding: 3px 10px;
-      font-size: 0.76rem;
-      font-family: inherit;
-      font-weight: 500;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      transition: all 0.15s;
-      white-space: nowrap;
-    }
-
-    .seg-ai-btn:hover:not(:disabled) {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .seg-ai-btn.is-active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-    }
-
-    .seg-ai-btn:disabled {
-      opacity: 0.65;
-      cursor: default;
-    }
-
-    .seg-ai-note {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      margin: -4px 0 10px 2px;
-    }
-
-    /* ===== 帳號小卡片名稱與整句 AI 翻譯／補中文樣式 ===== */
-    .account-pop-name {
-      font-size: 0.88rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 2px;
-    }
-    .account-pop-email {
-      font-size: 0.78rem;
-      color: var(--text-secondary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 1px;
-    }
-    .ai-sentence-card {
-      border-left: 3px solid var(--accent);
-      background: #F8FAFE;
-      margin-bottom: 12px;
-    }
-    .ai-sentence-card.is-loading {
-      padding: 11px 16px;
-      opacity: 0.85;
-    }
-    .ai-sentence-reading {
-      font-size: 0.82rem;
-      color: var(--accent);
-      font-family: 'Noto Sans JP', sans-serif;
-      margin-bottom: 4px;
-      line-height: 1.4;
-      word-break: break-word;
-    }
-    .ai-sentence-zh {
-      font-size: 1.18rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      line-height: 1.5;
-    }
-    .card-gloss-fallback {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .card-gloss-sub {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      margin-left: 4px;
-    }
-    .inline-ai-zh-btn {
-      background: var(--surface-subtle);
-      border: 1px solid var(--border);
-      color: var(--accent);
-      border-radius: 999px;
-      padding: 1px 8px;
-      font-size: 0.74rem;
-      font-family: inherit;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .inline-ai-zh-btn:hover:not(:disabled) {
-      border-color: var(--accent);
-      background: var(--accent-light);
-    }
-    .inline-ai-zh-btn:disabled {
-      opacity: 0.6;
-      cursor: default;
     }
