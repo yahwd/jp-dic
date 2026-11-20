@@ -1,11 +1,24 @@
 /**
- * 雪妖精の辭書 — Cloudflare Worker Gemini AI 代理服務
- * 環境變數需設定：GEMINI_API_KEY
+ * 雪妖精の辭書 — Cloudflare Worker AI 代理服務
+ * 環境變數設定：
+ * - GEMINI_API_KEY（必填）
+ * - GROQ_API_KEY（選填：Gemini 429 額度超限時自動免費備援）
+ * - OPENROUTER_API_KEY（選填：第二層免費備援）
  */
-const MODELS = [
+const GEMINI_MODELS = [
   'gemini-3.8-flash',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite'
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite'
+];
+
+const GROQ_MODELS = [
+  'openai/gpt-oss-120b',
+  'qwen/qwen3.8-27b'
+];
+
+const OPENROUTER_MODELS = [
+  'openrouter/free'
 ];
 
 const CORS_HEADERS = {
@@ -26,14 +39,42 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function callGeminiWithFallback(apiKey, prompt) {
-  const errors = [];
-  for (const model of MODELS) {
-    const maxAttempts = model === 'gemini-3.8-flash' ? 4 : 1;
+function extractJsonObject(rawText) {
+  const cleaned = String(rawText || '')
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/, '')
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+    throw e;
+  }
+}
+
+async function fetchWithTimeout(url, options, timeoutMs = 6500) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function callGeminiModels(apiKey, prompt, errors) {
+  for (const model of GEMINI_MODELS) {
+    // 429 最多重試 1 次（間隔 400ms），避免卡死 Worker 逾時導致 502
+    const maxAttempts = model === 'gemini-3.8-flash' ? 2 : 1;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-        const res = await fetch(endpoint, {
+        const res = await fetchWithTimeout(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -43,13 +84,16 @@ async function callGeminiWithFallback(apiKey, prompt) {
               responseMimeType: 'application/json'
             }
           })
-        });
+        }, 6500);
 
         if (!res.ok) {
-          const errDetail = (await res.text().catch(() => '')).slice(0, 140);
+          const errDetail = (await res.text().catch(() => '')).slice(0, 120);
           errors.push(`${model}(#${attempt}) HTTP ${res.status}${errDetail ? `: ${errDetail}` : ''}`);
+          if (res.status === 404 || res.status === 400) {
+            break;
+          }
           if ((res.status === 503 || res.status === 429) && attempt < maxAttempts) {
-            await sleep(700 * attempt);
+            await sleep(400);
             continue;
           }
           break;
@@ -62,17 +106,93 @@ async function callGeminiWithFallback(apiKey, prompt) {
           break;
         }
 
-        const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
-        return { parsed: JSON.parse(cleaned), model };
+        return { parsed: extractJsonObject(rawText), model };
       } catch (err) {
         errors.push(`${model}(#${attempt}): ${err.message || err}`);
         if (attempt < maxAttempts) {
-          await sleep(700 * attempt);
+          await sleep(400);
         }
       }
     }
   }
-  throw new Error(errors.join(' | ') || 'All Gemini models failed');
+  return null;
+}
+
+async function callOpenAICompatible(providerName, baseUrl, apiKey, models, prompt, errors, extraHeaders = {}) {
+  if (!apiKey) return null;
+  for (const model of models) {
+    try {
+      const res = await fetchWithTimeout(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          ...extraHeaders
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: '你是一個只會輸出合法 JSON 物件的日語辭典與翻譯引擎，禁止輸出任何 Markdown 或多餘文字。' },
+            { role: 'user', content: prompt }
+          ]
+        })
+      }, 6500);
+
+      if (!res.ok) {
+        const errDetail = (await res.text().catch(() => '')).slice(0, 120);
+        errors.push(`${providerName}:${model} HTTP ${res.status}${errDetail ? `: ${errDetail}` : ''}`);
+        continue;
+      }
+
+      const data = await res.json();
+      const rawText = data?.choices?.[0]?.message?.content;
+      if (!rawText) {
+        errors.push(`${providerName}:${model} empty content`);
+        continue;
+      }
+
+      return { parsed: extractJsonObject(rawText), model: `${providerName}/${model}` };
+    } catch (err) {
+      errors.push(`${providerName}:${model}: ${err.message || err}`);
+    }
+  }
+  return null;
+}
+
+async function callAiWithFallback(env, prompt) {
+  const errors = [];
+
+  if (env.GEMINI_API_KEY) {
+    const geminiHit = await callGeminiModels(env.GEMINI_API_KEY, prompt, errors);
+    if (geminiHit) return geminiHit;
+  } else {
+    errors.push('Missing GEMINI_API_KEY');
+  }
+
+  const groqHit = await callOpenAICompatible(
+    'groq',
+    'https://api.groq.com/openai/v1/chat/completions',
+    env.GROQ_API_KEY,
+    GROQ_MODELS,
+    prompt,
+    errors
+  );
+  if (groqHit) return groqHit;
+
+  const openRouterHit = await callOpenAICompatible(
+    'openrouter',
+    'https://openrouter.ai/api/v1/chat/completions',
+    env.OPENROUTER_API_KEY,
+    OPENROUTER_MODELS,
+    prompt,
+    errors,
+    { 'HTTP-Referer': 'https://yahwd.github.io/jp-dic/', 'X-Title': 'Yukiyosei JP Dict' }
+  );
+  if (openRouterHit) return openRouterHit;
+
+  throw new Error(errors.join(' | ') || 'All AI providers failed');
 }
 
 export default {
@@ -84,9 +204,8 @@ export default {
       return jsonResponse({ ok: false, error: 'Method Not Allowed' }, 405);
     }
 
-    const apiKey = env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return jsonResponse({ ok: false, error: 'Missing GEMINI_API_KEY' }, 500);
+    if (!env.GEMINI_API_KEY && !env.GROQ_API_KEY && !env.OPENROUTER_API_KEY) {
+      return jsonResponse({ ok: false, error: 'Missing AI API Keys' }, 500);
     }
 
     try {
@@ -116,7 +235,7 @@ export default {
 
 日文原句：${text}`;
 
-        const { parsed, model } = await callGeminiWithFallback(apiKey, prompt);
+        const { parsed, model } = await callAiWithFallback(env, prompt);
         return jsonResponse({
           ok: true,
           mode: 'segment',
@@ -124,10 +243,17 @@ export default {
           translation: String(parsed.translation || '').trim(),
           reading: String(parsed.reading || '').trim(),
           tokens: Array.isArray(parsed.tokens)
-            ? parsed.tokens.filter(t => {
-                const s = String((t && t.surface) || '').trim();
-                return s && !/^[\s 。．.、，,!！?？・･·…‥「」『』（）()【】《》〈〉〜～—\-_:：;；/／\\|｜"'’“”]+$/.test(s);
-              })
+            ? parsed.tokens
+                .map(t => {
+                  const cleanSurface = String((t && t.surface) || '')
+                    .replace(/^[\s　\p{P}\p{S}。．.、，,!！?？・･·…‥「」『』（）()【】《》〈〉〜～—\-_:：;；/／\\|｜"'’“”]+|[\s　\p{P}\p{S}。．.、，,!！?？・･·…‥「」『』（）()【】《》〈〉〜～—\-_:：;；/／\\|｜"'’“”]+$/gu, '')
+                    .trim();
+                  const cleanLemma = String((t && t.lemma) || cleanSurface)
+                    .replace(/^[\s　\p{P}\p{S}。．.、，,!！?？・･·…‥「」『』（）()【】《》〈〉〜～—\-_:：;；/／\\|｜"'’“”]+|[\s　\p{P}\p{S}。．.、，,!！?？・･·…‥「」『』（）()【】《》〈〉〜～—\-_:：;；/／\\|｜"'’“”]+$/gu, '')
+                    .trim();
+                  return { ...t, surface: cleanSurface, lemma: cleanLemma || cleanSurface };
+                })
+                .filter(t => t.surface && !/^[\s　\p{P}\p{S}。．.、，,!！?？・･·…‥「」『』（）()【】《》〈〉〜～—\-_:：;；/／\\|｜"'’“”]+$/u.test(t.surface))
             : []
         });
       }
@@ -147,7 +273,7 @@ export default {
 目標語言：${to}
 待翻譯文字${wordContext}：${text}`;
 
-      const { parsed, model } = await callGeminiWithFallback(apiKey, prompt);
+      const { parsed, model } = await callAiWithFallback(env, prompt);
       return jsonResponse({
         ok: true,
         mode: 'translate',

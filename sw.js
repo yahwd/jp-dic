@@ -1,6 +1,6 @@
 /* 雪妖精の辭書 — Service Worker
  * 更換 data 檔案或大幅改版時，請同步把這裡與 assets/app.js 的 CACHE_NAME 版本號一起加 1。 */
-const CACHE_NAME = 'yukiyosei-v24';
+const CACHE_NAME = 'yukiyosei-v26';
 
 const SHELL = [
   './',
@@ -8,9 +8,9 @@ const SHELL = [
   './assets/firebase-config.js',
   './assets/app.js',
   './assets/style.css',
-  './assets/firebase-config.js?v=24',
-  './assets/app.js?v=24',
-  './assets/style.css?v=24',
+  './assets/firebase-config.js?v=26',
+  './assets/app.js?v=26',
+  './assets/style.css?v=26',
   './manifest.webmanifest',
   './manifest.webmanifest?v=2',
   './icons/icon-192.png',

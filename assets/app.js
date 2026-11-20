@@ -709,7 +709,7 @@
     const histCountEl = document.getElementById('histCount');
 
     // 版本號需與 sw.js 的 CACHE_NAME 相同；更換 data 檔案後兩邊一起加 1
-    const CACHE_NAME = 'yukiyosei-v24';
+    const CACHE_NAME = 'yukiyosei-v26';
 
     function formatMB(bytes) {
       return (bytes / 1048576).toFixed(1) + ' MB';
@@ -1924,11 +1924,16 @@
       return [...String(str || '').replace(/[\s　]+/g, '')].length;
     }
 
-    const RE_SEG_PUNCT = /[。．、，、-〄〈-〠〰〽・！-／：-＠［-｀｛-･!"#$%&'()*+,\-./:;<=>?@[\\]^_`{|}~…‥]/;
-    const RE_ONLY_PUNCT = /^[\s　。．、，、-〄〈-〠〰〽・！-／：-＠［-｀｛-･!"#$%&'()*+,\-./:;<=>?@[\\]^_`{|}~…‥]+$/;
+    const RE_SEG_PUNCT = /[\p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]/u;
+    const RE_ONLY_PUNCT = /^[\s　\p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+$/u;
+    const RE_EDGE_PUNCT = /^[\s　\p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+|[\s　\p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+$/gu;
+
+    function stripEdgePunct(str) {
+      return String(str || '').replace(RE_EDGE_PUNCT, '').trim();
+    }
 
     function isPunctOnlyToken(str) {
-      const s = String(str || '').trim();
+      const s = stripEdgePunct(str);
       return !s || RE_ONLY_PUNCT.test(s);
     }
     const RE_HAS_PARTICLE = /(?:から|まで|より|[はがをにでともへのねよか])/;
@@ -2158,7 +2163,9 @@
         i = j;
       }
 
-      return tokens.filter(t => t && !isPunctOnlyToken(t.text));
+      return tokens
+        .map(t => ({ ...t, text: stripEdgePunct(t.text) }))
+        .filter(t => t.text && !isPunctOnlyToken(t.text));
     }
 
     // 針對單一斷詞精準檢索（只取精確命中與活用形還原，不混入前綴模糊搜尋）
@@ -2295,9 +2302,9 @@
         if (token !== searchToken || !currentSearchOutput.isSegmented || currentSearchOutput.rawQuery !== q) return;
 
         const mappedTokens = (aiRes.tokens || []).map(item => {
-          const surface = String(item.surface || '').trim();
-          const lemma = String(item.lemma || surface).trim();
-          const isParticle = Boolean(item.isParticle || item.pos === '助詞');
+          const surface = stripEdgePunct(item.surface || '');
+          const lemma = stripEdgePunct(item.lemma || surface) || surface;
+          const isParticle = Boolean(item.isParticle || item.pos === '助詞' || item.pos === '標點符號' || item.pos === '記号');
           let tokenRes = searchSegmentToken({ text: lemma, isParticle });
           if (tokenRes.results.length === 0 && surface !== lemma) {
             tokenRes = searchSegmentToken({ text: surface, isParticle });
@@ -2364,7 +2371,16 @@
       if (zhs.length > 0) {
         return zhs.slice(0, 3).join('、');
       }
-      const senses = entry[3] || [];
+      const entryId = getEntryId(entry);
+      const cachedZh = aiWordZhCache.get(entryId);
+      if (cachedZh) {
+        return cachedZh;
+      }
+      return '';
+    }
+
+    function fallbackEnglishText(entry) {
+      const senses = (entry && entry[3]) || [];
       if (senses.length > 0 && senses[0].g && senses[0].g.length > 0) {
         return senses[0].g.slice(0, 2).join('; ');
       }
@@ -2376,30 +2392,47 @@
       const wrap = document.createElement('div');
       const isAiActive = Boolean(out.useAiSegment && out.aiData);
 
-      // 置頂整句 AI 翻譯卡
-      if (isAiActive && (out.aiData.translation || out.aiData.reading)) {
+      // 置頂整句繁體中文翻譯卡（AI 就緒時顯示 AI 翻譯；否則自動透過免費翻譯補上整句中文，避免出現英文解釋）
+      const fallbackTr = out.sentenceTr || null;
+      const sentenceZh = isAiActive
+        ? (out.aiData.translation || '')
+        : (fallbackTr && fallbackTr.state === 'done' ? fallbackTr.text : '');
+      const sentenceReading = isAiActive ? (out.aiData.reading || '') : '';
+      const sentenceBadge = isAiActive
+        ? '✨ 整句 AI 翻譯'
+        : (fallbackTr && fallbackTr.state === 'done'
+            ? `🌐 整句中文翻譯 · ${escapeHtml(fallbackTr.engine || '線上翻譯')}`
+            : '🌐 整句中文翻譯中…');
+
+      if (sentenceZh || sentenceReading || (fallbackTr && fallbackTr.state === 'loading')) {
         const aiCard = document.createElement('article');
         aiCard.className = 'ai-sentence-card';
         aiCard.innerHTML = `
           <div class="ai-sentence-head">
-            <span class="ai-sentence-badge">✨ 整句 AI 翻譯 · Gemini</span>
+            <span class="ai-sentence-badge">${sentenceBadge}</span>
+            ${sentenceZh ? `
             <div class="ai-sentence-actions">
               <button type="button" class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(out.rawQuery)}">${SPEAKER_SVG}</button>
               <button type="button" class="ai-copy-btn" title="一鍵複製翻譯">複製翻譯</button>
-            </div>
+            </div>` : ''}
           </div>
-          ${out.aiData.reading ? `<div class="ai-sentence-reading">${escapeHtml(out.aiData.reading)}</div>` : ''}
-          ${out.aiData.translation ? `<div class="ai-sentence-zh">${escapeHtml(out.aiData.translation)}</div>` : ''}
+          ${sentenceReading ? `<div class="ai-sentence-reading">${escapeHtml(sentenceReading)}</div>` : ''}
+          ${sentenceZh
+            ? `<div class="ai-sentence-zh">${escapeHtml(sentenceZh)}</div>`
+            : `<div class="seg-tr-status">正在取得整句繁體中文翻譯…</div>`}
         `;
-        aiCard.querySelector('[data-speak]').addEventListener('click', () => speakJapanese(out.rawQuery));
+        const spBtn = aiCard.querySelector('[data-speak]');
+        if (spBtn) spBtn.addEventListener('click', () => speakJapanese(out.rawQuery));
         const copyBtn = aiCard.querySelector('.ai-copy-btn');
-        copyBtn.addEventListener('click', async () => {
-          try {
-            await navigator.clipboard.writeText(out.aiData.translation || '');
-            copyBtn.textContent = '已複製 ✓';
-            setTimeout(() => { copyBtn.textContent = '複製翻譯'; }, 1500);
-          } catch (e) {}
-        });
+        if (copyBtn) {
+          copyBtn.addEventListener('click', async () => {
+            try {
+              await navigator.clipboard.writeText(sentenceZh);
+              copyBtn.textContent = '已複製 ✓';
+              setTimeout(() => { copyBtn.textContent = '複製翻譯'; }, 1500);
+            } catch (e) {}
+          });
+        }
         wrap.appendChild(aiCard);
       }
 
@@ -2487,6 +2520,7 @@
         const showReading = primaryReading && primaryReading !== primaryWord;
         const posText = (aiMeta && aiMeta.pos) || primaryPosText(entry, tok.isParticle);
         const meaningText = (aiMeta && aiMeta.meaning) || primaryMeaningText(entry, tok.text, tok.isParticle);
+        const enFallback = !meaningText ? fallbackEnglishText(entry) : '';
         const fav = isFavorite(entry);
         const inf = tok.inflection;
         const surfaceForm = (aiMeta && aiMeta.lemma && aiMeta.lemma !== tok.text)
@@ -2505,7 +2539,9 @@
               ${posText ? `<span class="pos-tag">${escapeHtml(posText)}</span>` : ''}
               ${surfaceBadge}
             </div>
-            ${meaningText ? `<div class="seg-card-gloss${tok.isParticle ? ' is-grammar' : ''}">${escapeHtml(meaningText)}</div>` : ''}
+            ${meaningText
+              ? `<div class="seg-card-gloss${tok.isParticle ? ' is-grammar' : ''}">${escapeHtml(meaningText)}</div>`
+              : `<div class="card-gloss-fallback"><span class="seg-tr-status">中文釋義翻譯中…</span>${enFallback ? `<span class="ai-zh-sub-en">（${escapeHtml(enFallback)}）</span>` : ''}</div>`}
           </div>
           <div class="card-actions">
             <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
@@ -2524,6 +2560,30 @@
         card.querySelector('[data-speak]').addEventListener('click', (e) => {
           speakJapanese(e.currentTarget.getAttribute('data-speak'));
         });
+
+        if (!meaningText) {
+          const entryId = getEntryId(entry);
+          const statusEl = card.querySelector('.seg-tr-status');
+          if (!tok._entryZhStarted) {
+            tok._entryZhStarted = true;
+            const srcText = enFallback || primaryWord;
+            const srcLang = enFallback ? 'en' : 'ja';
+            translateText(srcText, srcLang, 'zh-TW', primaryWord)
+              .then(tr => {
+                if (tr && tr.text) {
+                  aiWordZhCache.set(entryId, tr.text);
+                  if (currentTab === 'search') renderCurrentView();
+                } else if (statusEl) {
+                  statusEl.textContent = enFallback || '暫無中文釋義';
+                }
+              })
+              .catch(() => {
+                if (statusEl) statusEl.textContent = enFallback || '暫無中文釋義';
+              });
+          } else if (statusEl) {
+            statusEl.textContent = enFallback || '暫無中文釋義';
+          }
+        }
 
         list.appendChild(card);
       });
@@ -3601,9 +3661,28 @@
       resultCountEl.style.display = query.trim() ? '' : 'none';
 
       const q = query.trim();
-      if (isDbReady && q && currentSearchOutput.isSegmented && getAiWorkerEndpoint()) {
-        currentSearchOutput.aiState = 'loading';
-        fetchAiSegmentation(q, token);
+      if (isDbReady && q && currentSearchOutput.isSegmented) {
+        currentSearchOutput.sentenceTr = { state: 'loading', text: '', engine: '' };
+        translateText(q, 'ja', 'zh-TW')
+          .then(tr => {
+            if (token !== searchToken || !currentSearchOutput.isSegmented || currentSearchOutput.rawQuery !== q) return;
+            if (tr && tr.text) {
+              currentSearchOutput.sentenceTr = { state: 'done', text: tr.text, engine: tr.engine || '線上翻譯' };
+            } else {
+              currentSearchOutput.sentenceTr = { state: 'error', text: '', engine: '' };
+            }
+            if (currentTab === 'search' && !currentSearchOutput.useAiSegment) renderCurrentView();
+          })
+          .catch(() => {
+            if (token !== searchToken || !currentSearchOutput.isSegmented || currentSearchOutput.rawQuery !== q) return;
+            currentSearchOutput.sentenceTr = { state: 'error', text: '', engine: '' };
+            if (currentTab === 'search' && !currentSearchOutput.useAiSegment) renderCurrentView();
+          });
+
+        if (getAiWorkerEndpoint()) {
+          currentSearchOutput.aiState = 'loading';
+          fetchAiSegmentation(q, token);
+        }
       }
       const needTranslate = isDbReady && q && !currentSearchOutput.isSegmented
         && currentSearchOutput.results.length === 0
@@ -4020,7 +4099,7 @@
               bannerDesc = `已由 Gemini AI 依上下文拆解為 ${out.tokens.length} 個詞彙（點右上「✨ AI 拆句 ✓」可切回本地斷詞）`;
               bannerTag = '<span class="mode-tag mode-ai">✨ AI 語意拆解</span>';
             } else if (out.aiState === 'error' && out.aiError) {
-              bannerDesc = `目前顯示本地規則斷詞（AI 暫無法連線：${escapeHtml(out.aiError)}）`;
+              bannerDesc = `目前顯示本地規則斷詞與中文翻譯（AI 暫達上限，已自動切換免費翻譯）`;
             }
             strategyArea.innerHTML = `
               <div class="strategy-banner">
