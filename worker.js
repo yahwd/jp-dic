@@ -3,9 +3,10 @@
  * 環境變數需設定：GEMINI_API_KEY
  */
 const MODELS = [
+  'gemini-3.8-flash-lite',
+  'gemini-3.8-flash',
   'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash'
+  'gemini-2.5-flash'
 ];
 
 const CORS_HEADERS = {
@@ -23,7 +24,7 @@ function jsonResponse(data, status = 200) {
 }
 
 async function callGeminiWithFallback(apiKey, prompt) {
-  let lastError = 'All Gemini models failed';
+  const errors = [];
   for (const model of MODELS) {
     try {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -40,24 +41,25 @@ async function callGeminiWithFallback(apiKey, prompt) {
       });
 
       if (!res.ok) {
-        lastError = `${model} HTTP ${res.status}`;
+        const errDetail = (await res.text().catch(() => '')).slice(0, 140);
+        errors.push(`${model} HTTP ${res.status}${errDetail ? `: ${errDetail}` : ''}`);
         continue;
       }
 
       const data = await res.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) {
-        lastError = `${model} empty candidate`;
+        errors.push(`${model} empty candidate`);
         continue;
       }
 
       const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
       return { parsed: JSON.parse(cleaned), model };
     } catch (err) {
-      lastError = `${model}: ${err.message || err}`;
+      errors.push(`${model}: ${err.message || err}`);
     }
   }
-  throw new Error(lastError);
+  throw new Error(errors.join(' | ') || 'All Gemini models failed');
 }
 
 export default {
