@@ -1591,11 +1591,11 @@
       cursor: wait;
     }
 
-    /* ===== 置頂整句 AI 翻譯卡 ===== */
+    /* ===== 置頂整句翻譯卡（對齊全站主色調） ===== */
     .ai-sentence-card {
-      background: linear-gradient(180deg, #FAF8FF 0%, #FFFFFF 100%);
-      border: 1px solid #DDD6FE;
-      border-left: 3.5px solid #7C3AED;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3.5px solid var(--accent);
       border-radius: var(--radius);
       padding: 13px 15px;
       margin-bottom: 12px;
@@ -1621,8 +1621,8 @@
       gap: 5px;
       font-size: 0.76rem;
       font-weight: 600;
-      color: #6D28D9;
-      background: #EDE9FE;
+      color: var(--accent);
+      background: var(--accent-light);
       padding: 2px 9px;
       border-radius: 999px;
     }
@@ -1641,7 +1641,7 @@
       padding: 3px 9px;
       border-radius: 6px;
       border: 1px solid var(--border);
-      background: var(--surface);
+      background: var(--bg);
       color: var(--text-secondary);
       font-size: 0.75rem;
       font-family: inherit;
@@ -1650,14 +1650,14 @@
     }
 
     .ai-copy-btn:hover {
-      border-color: #7C3AED;
-      color: #6D28D9;
-      background: #F5F3FF;
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
     }
 
     .ai-sentence-reading {
       font-size: 0.84rem;
-      color: #6D28D9;
+      color: var(--accent);
       margin-bottom: 4px;
       line-height: 1.5;
       word-break: break-word;

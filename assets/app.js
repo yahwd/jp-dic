@@ -2392,48 +2392,44 @@
       const wrap = document.createElement('div');
       const isAiActive = Boolean(out.useAiSegment && out.aiData);
 
-      // 置頂整句繁體中文翻譯卡（AI 就緒時顯示 AI 翻譯；否則自動透過免費翻譯補上整句中文，避免出現英文解釋）
+      // 置頂整句繁體中文翻譯卡（左側主色深藍邊線、日語原句最大、中文釋義較小、翻譯引擎小字放旁邊）
       const fallbackTr = out.sentenceTr || null;
       const sentenceZh = isAiActive
         ? (out.aiData.translation || '')
         : (fallbackTr && fallbackTr.state === 'done' ? fallbackTr.text : '');
       const sentenceReading = isAiActive ? (out.aiData.reading || '') : '';
-      const sentenceBadge = isAiActive
-        ? '✨ 整句 AI 翻譯'
+      const engineLabel = isAiActive
+        ? 'Gemini AI'
         : (fallbackTr && fallbackTr.state === 'done'
-            ? `🌐 整句中文翻譯 · ${escapeHtml(fallbackTr.engine || '線上翻譯')}`
-            : '🌐 整句中文翻譯中…');
+            ? (fallbackTr.engine || 'Google 翻譯')
+            : '翻譯中…');
 
       if (sentenceZh || sentenceReading || (fallbackTr && fallbackTr.state === 'loading')) {
-        const aiCard = document.createElement('article');
-        aiCard.className = 'ai-sentence-card';
-        aiCard.innerHTML = `
-          <div class="ai-sentence-head">
-            <span class="ai-sentence-badge">${sentenceBadge}</span>
+        const trCard = document.createElement('article');
+        trCard.className = 'word-card';
+        trCard.style.cssText = 'margin-bottom:14px;border-left:3.5px solid var(--accent);';
+        trCard.innerHTML = `
+          <div class="card-header${sentenceZh ? ' has-below' : ''}">
+            <div class="word-title-group">
+              ${sentenceReading ? `<div class="kana-reading">${escapeHtml(sentenceReading)}</div>` : ''}
+              <div class="kanji-main" style="font-size:1.25rem;">
+                <span>${escapeHtml(out.rawQuery)}</span>
+                <span class="pos-tag" style="font-weight:500;">${escapeHtml(engineLabel)}</span>
+              </div>
+            </div>
             ${sentenceZh ? `
-            <div class="ai-sentence-actions">
+            <div class="card-actions">
+              <button type="button" class="icon-btn copy-btn" title="複製翻譯" aria-label="複製翻譯" data-copy="${escapeHtml(sentenceZh)}">${COPY_SVG}</button>
               <button type="button" class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(out.rawQuery)}">${SPEAKER_SVG}</button>
-              <button type="button" class="ai-copy-btn" title="一鍵複製翻譯">複製翻譯</button>
             </div>` : ''}
           </div>
-          ${sentenceReading ? `<div class="ai-sentence-reading">${escapeHtml(sentenceReading)}</div>` : ''}
           ${sentenceZh
-            ? `<div class="ai-sentence-zh">${escapeHtml(sentenceZh)}</div>`
-            : `<div class="seg-tr-status">正在取得整句繁體中文翻譯…</div>`}
+            ? `<div class="seg-card-gloss">${escapeHtml(sentenceZh)}</div>`
+            : `<div class="seg-card-gloss" style="color:var(--text-muted);">正在取得整句繁體中文翻譯…</div>`}
         `;
-        const spBtn = aiCard.querySelector('[data-speak]');
+        const spBtn = trCard.querySelector('[data-speak]');
         if (spBtn) spBtn.addEventListener('click', () => speakJapanese(out.rawQuery));
-        const copyBtn = aiCard.querySelector('.ai-copy-btn');
-        if (copyBtn) {
-          copyBtn.addEventListener('click', async () => {
-            try {
-              await navigator.clipboard.writeText(sentenceZh);
-              copyBtn.textContent = '已複製 ✓';
-              setTimeout(() => { copyBtn.textContent = '複製翻譯'; }, 1500);
-            } catch (e) {}
-          });
-        }
-        wrap.appendChild(aiCard);
+        wrap.appendChild(trCard);
       }
 
       const list = document.createElement('div');
