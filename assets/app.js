@@ -200,6 +200,56 @@
       }
     }
 
+    let isAccountPopoverOpen = false;
+
+    function closeAccountPopover() {
+      isAccountPopoverOpen = false;
+      const pop = document.getElementById('accountPopover');
+      if (pop) pop.remove();
+      const btn = document.getElementById('accountBtn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+
+    function openAccountPopover(user) {
+      const wrap = document.getElementById('accountWrap');
+      const btn = document.getElementById('accountBtn');
+      if (!wrap || !user) return;
+      closeAccountPopover();
+
+      const emailText = user.email || '未提供 Email';
+      const nameText = user.displayName || 'Google 帳號';
+      const badge = document.getElementById('accountSyncBadge');
+      const isSyncing = Boolean(badge && badge.classList.contains('is-syncing'));
+      const statusLabel = isSyncing ? '正在同步資料…' : '已開啟雲端同步';
+
+      const pop = document.createElement('div');
+      pop.className = 'account-popover';
+      pop.id = 'accountPopover';
+      pop.setAttribute('role', 'dialog');
+      pop.setAttribute('aria-label', '已登入帳號資訊');
+      pop.innerHTML = `
+        <div class="account-pop-head">
+          <img class="account-pop-avatar" src="./icons/avatar-user.png" alt="帳號頭像" />
+          <div class="account-pop-info">
+            <div class="account-pop-status" id="accountSyncStatusText">${escapeHtml(statusLabel)}</div>
+            <div class="account-pop-name">${escapeHtml(nameText)}</div>
+            <div class="account-pop-email" title="${escapeHtml(emailText)}">${escapeHtml(emailText)}</div>
+          </div>
+        </div>
+        <button type="button" class="account-logout-btn" id="accountLogoutBtn">登出</button>
+      `;
+
+      pop.addEventListener('click', (e) => e.stopPropagation());
+      pop.querySelector('#accountLogoutBtn').addEventListener('click', async () => {
+        closeAccountPopover();
+        await triggerGoogleSignOut();
+      });
+
+      wrap.appendChild(pop);
+      isAccountPopoverOpen = true;
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+    }
+
     function updateAccountUi(user) {
       currentCloudUser = user || null;
       const btn = document.getElementById('accountBtn');
@@ -210,11 +260,15 @@
       if (user) {
         const label = user.email || user.displayName || 'Google 帳號';
         btn.classList.add('is-signed-in');
-        btn.title = `已登入：${label}（點擊登出）`;
-        btn.setAttribute('aria-label', `已登入：${label}，點擊登出`);
+        btn.title = `已登入：${label}（點擊查看帳號與登出）`;
+        btn.setAttribute('aria-label', `已登入：${label}，點擊查看帳號與登出`);
         if (avatarImg) avatarImg.src = './icons/avatar-user.png';
         if (badge) badge.style.display = 'block';
+        if (isAccountPopoverOpen) {
+          openAccountPopover(user);
+        }
       } else {
+        closeAccountPopover();
         btn.classList.remove('is-signed-in');
         btn.title = '登入 Google 帳號開啟跨裝置同步';
         btn.setAttribute('aria-label', '登入 Google 帳號開啟跨裝置同步');
@@ -490,6 +544,9 @@
     window.addEventListener('pagehide', () => {
       flushCloudSyncPush();
     });
+    window.addEventListener('online', () => {
+      flushCloudSyncPush();
+    });
 
     async function handleAuthenticatedUser(user) {
       updateAccountUi(user);
@@ -530,9 +587,21 @@
       }
     }
 
+    let firebaseInitPromise = null;
+    let firebaseInitError = null;
+
     async function triggerGoogleSignIn() {
-      if (!firebaseRuntime) {
+      const cfg = window.YUKIYOSEI_FIREBASE_CONFIG;
+      if (!cfg || !cfg.apiKey || !cfg.projectId) {
         alert('尚未設定 Firebase 雲端專案（請先於 assets/firebase-config.js 填入專案設定），目前維持本機離線儲存。');
+        return;
+      }
+      if (!firebaseRuntime && firebaseInitPromise) {
+        await firebaseInitPromise;
+      }
+      if (!firebaseRuntime) {
+        const detail = firebaseInitError ? `\n(${firebaseInitError})` : '';
+        alert(`Firebase 雲端模組載入失敗，請確認網路連線後重新整理頁面再試。${detail}`);
         return;
       }
       const { auth, modules } = firebaseRuntime;
@@ -555,7 +624,7 @@
             alert('Google 登入失敗，請稍後再試。');
           }
         } else {
-          alert('Google 登入失敗，請確認網路與網域設定。');
+          alert(`Google 登入失敗（${code || '請確認網域與登入設定'}）。`);
         }
       }
     }
@@ -571,46 +640,54 @@
       updateAccountUi(null);
     }
 
-    async function initOptionalFirebaseSync() {
+    function initOptionalFirebaseSync() {
       const cfg = window.YUKIYOSEI_FIREBASE_CONFIG;
-      if (!cfg || !cfg.apiKey || !cfg.projectId) return;
-      try {
-        const [appMod, authMod, fsMod] = await Promise.all([
-          import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js'),
-          import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js'),
-          import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js')
-        ]);
-        const app = appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(cfg);
-        const auth = authMod.getAuth(app);
-        const db = fsMod.getFirestore(app);
+      if (!cfg || !cfg.apiKey || !cfg.projectId) return Promise.resolve();
+      if (firebaseInitPromise) return firebaseInitPromise;
 
-        firebaseRuntime = {
-          auth,
-          db,
-          modules: {
-            GoogleAuthProvider: authMod.GoogleAuthProvider,
-            signInWithPopup: authMod.signInWithPopup,
-            signInWithRedirect: authMod.signInWithRedirect,
-            getRedirectResult: authMod.getRedirectResult,
-            signOut: authMod.signOut,
-            onAuthStateChanged: authMod.onAuthStateChanged,
-            doc: fsMod.doc,
-            getDoc: fsMod.getDoc,
-            setDoc: fsMod.setDoc
-          }
-        };
+      firebaseInitPromise = (async () => {
+        try {
+          firebaseInitError = null;
+          const [appMod, authMod, fsMod] = await Promise.all([
+            import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js'),
+            import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js'),
+            import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js')
+          ]);
+          const app = appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(cfg);
+          const auth = authMod.getAuth(app);
+          const db = fsMod.getFirestore(app);
 
-        authMod.getRedirectResult(auth).catch(() => {});
-        authMod.onAuthStateChanged(auth, (user) => {
-          if (user) {
-            handleAuthenticatedUser(user);
-          } else {
-            updateAccountUi(null);
-          }
-        });
-      } catch (e) {
-        // 離線或 CDN 無法載入時維持純本機 Local-First 運作
-      }
+          firebaseRuntime = {
+            auth,
+            db,
+            modules: {
+              GoogleAuthProvider: authMod.GoogleAuthProvider,
+              signInWithPopup: authMod.signInWithPopup,
+              signInWithRedirect: authMod.signInWithRedirect,
+              getRedirectResult: authMod.getRedirectResult,
+              signOut: authMod.signOut,
+              onAuthStateChanged: authMod.onAuthStateChanged,
+              doc: fsMod.doc,
+              getDoc: fsMod.getDoc,
+              setDoc: fsMod.setDoc
+            }
+          };
+
+          authMod.getRedirectResult(auth).catch(() => {});
+          authMod.onAuthStateChanged(auth, (user) => {
+            if (user) {
+              handleAuthenticatedUser(user);
+            } else {
+              updateAccountUi(null);
+            }
+          });
+        } catch (e) {
+          firebaseInitError = (e && e.message) ? e.message : 'SDK 載入失敗';
+          firebaseInitPromise = null;
+        }
+      })();
+
+      return firebaseInitPromise;
     }
 
     window.YukiyoseiSync = {
@@ -631,7 +708,7 @@
     const histCountEl = document.getElementById('histCount');
 
     // 版本號需與 sw.js 的 CACHE_NAME 相同；更換 data 檔案後兩邊一起加 1
-    const CACHE_NAME = 'yukiyosei-v17';
+    const CACHE_NAME = 'yukiyosei-v31';
 
     function formatMB(bytes) {
       return (bytes / 1048576).toFixed(1) + ' MB';
@@ -706,6 +783,8 @@
         refreshDerivedCollections();
         updateCounts();
         setDbStatus('ready');
+        const lb = document.getElementById('localLoaderBanner');
+        if (lb) lb.classList.add('is-ready');
         if (searchInput.value.trim()) performSearch(searchInput.value.trim(), false);
         else renderCurrentView();
 
@@ -720,7 +799,8 @@
         } catch (e) {}
       } catch (err) {
         setDbStatus('error');
-        document.getElementById('localLoaderBanner').style.display = 'flex';
+        const lbErr = document.getElementById('localLoaderBanner');
+        if (lbErr) { lbErr.style.display = 'flex'; lbErr.classList.remove('is-ready'); }
         mainContent.innerHTML = `
           <div class="empty-state">
             <strong>尚未載入詞庫檔案</strong>
@@ -754,7 +834,8 @@
         refreshDerivedCollections();
         updateCounts();
         setDbStatus('ready');
-        document.getElementById('localLoaderBanner').style.display = 'none';
+        const lbMan = document.getElementById('localLoaderBanner');
+        if (lbMan) { lbMan.style.display = 'flex'; lbMan.classList.add('is-ready'); }
         if (searchInput.value.trim()) performSearch(searchInput.value.trim(), false);
         else renderCurrentView();
       } else {
@@ -929,6 +1010,16 @@
       const key = `${from}|${to}|${text}`;
       if (translateCache.has(key)) return translateCache.get(key);
       let result;
+      if (getAiSegmentEndpoint()) {
+        try {
+          const aiRes = await requestAiTranslate(text, from, to);
+          result = { text: aiRes.text, reading: aiRes.reading, engine: 'Gemini AI' };
+          translateCache.set(key, result);
+          return result;
+        } catch (aiErr) {
+          // AI 暫時不可用時自動退回免費翻譯保底
+        }
+      }
       try {
         result = { text: await translateViaGoogle(text, from, to), engine: 'Google 翻譯' };
       } catch (e1) {
@@ -1783,7 +1874,12 @@
       'いそがしい', '忙しい', 'かわいい', '可愛い', 'かっこいい', 'すごい', '凄い',
       'かえる', '帰る', '変える', 'でんわ', '電話', 'てがみ', '手紙', 'しゃしん', '写真',
       'りょこう', '旅行', 'おんせん', '温泉', 'しんかんせん', '新幹線', 'ちかてつ', '地下鉄',
-      'びょういん', '病院', 'ぎんこう', '銀行', 'としょかん', '図書館', 'こうえん', '公園'
+      'びょういん', '病院', 'ぎんこう', '銀行', 'としょかん', '図書館', 'こうえん', '公園',
+      'なんとかなる', '何とかなる', 'なんとかする', '何とかする', 'どうにかなる', 'どうにかする',
+      'しょうがない', '仕様がない', 'しかたがない', '仕方がない', 'しかたない', '仕方ない',
+      'かもしれない', 'かもしれません', 'にちがいない', 'に違いない', 'にきまっている', 'に決まっている',
+      'おかげさまで', 'お蔭様で', 'おせわになります', 'お世話になります', 'おじゃまします', 'お邪魔します',
+      'きをつける', '気をつける', 'きにする', '気にする', 'きにいる', '気に入る'
     ]);
 
     const RE_SEG_PUNCT = /[\s　、-〄〈-〠〰〽・！-／：-＠［-｀｛-･!"#$%&'()*+,\-./:;<=>?@[\\]^_`{|}~…‥]/;
@@ -2108,10 +2204,26 @@
       return rankByCoreScore(exact, variants);
     }
 
+    // 單一假名且非常見助詞時，避免隨便配對冷門古語漢字（如「る」配成律令制「流刑、流放」）
+    function shouldSuppressSingleKanaEntry(tokText, isParticle, entry) {
+      if (isParticle || !entry) return false;
+      const chars = [...String(tokText || '')];
+      if (chars.length !== 1 || !/^[\u3040-\u309F\u30A0-\u30FFー]$/.test(chars[0])) return false;
+      if (COMMON_PARTICLES.has(toHiragana(chars[0]))) return false;
+      const senses = entry[3] || [];
+      const allTags = senses.flatMap(sn => sn.p || []);
+      const isArchaicOnly = allTags.length > 0 && allTags.every(tag => tag === 'arch' || tag === 'obs' || tag === 'dated' || tag === 'hist');
+      return !entry[2] || isArchaicOnly;
+    }
+
     function buildSegmentedOverview(q, tokens) {
       const enriched = tokens.map(tok => {
         const res = searchSegmentToken(tok);
-        const bestEntry = res.results[0] || null;
+        let bestEntry = res.results[0] || null;
+        if (bestEntry && shouldSuppressSingleKanaEntry(tok.text, tok.isParticle, bestEntry)) {
+          const alt = res.results.find(e => !shouldSuppressSingleKanaEntry(tok.text, tok.isParticle, e));
+          bestEntry = alt || null;
+        }
         const inflection = bestEntry && res.inflections ? res.inflections.get(bestEntry) || null : null;
         return { ...tok, tokenRes: res, bestEntry, inflection };
       });
@@ -2153,6 +2265,286 @@
       return '';
     }
 
+    // ===== AI 整句翻譯 ＋ 語意拆句增強（長句自動觸發 ＋ 手動按鈕切換，無設定時自動退回純本地斷詞）=====
+    const aiSegCache = new Map();
+    const aiWordZhCache = new Map();
+    let aiSegTimer = null;
+
+    function getAiSegmentEndpoint() {
+      const ep = (window.YUKIYOSEI_AI_SEGMENT_ENDPOINT || '').trim();
+      return ep || '';
+    }
+
+    function hasChromeBuiltInAi() {
+      return typeof window !== 'undefined' && (
+        (window.LanguageModel && typeof window.LanguageModel.create === 'function') ||
+        (window.ai && window.ai.languageModel && typeof window.ai.languageModel.create === 'function')
+      );
+    }
+
+    function isAiSegmentAvailable() {
+      return Boolean(getAiSegmentEndpoint() || hasChromeBuiltInAi());
+    }
+
+    function findBestLocalEntryForAiToken(surface, baseForm, reading, isParticle) {
+      if (isParticle) {
+        const res = searchSegmentToken({ text: baseForm || surface, isParticle: true });
+        return res.results[0] || null;
+      }
+      const candidates = [baseForm, surface].filter(Boolean);
+      for (const cand of candidates) {
+        const res = searchSegmentToken({ text: cand, isParticle: false });
+        let best = res.results[0] || null;
+        if (best && shouldSuppressSingleKanaEntry(cand, false, best)) {
+          best = res.results.find(e => !shouldSuppressSingleKanaEntry(cand, false, e)) || null;
+        }
+        if (best) {
+          if (reading) {
+            const hiraTarget = toHiragana(reading);
+            const exactReadingHit = res.results.find(e =>
+              !shouldSuppressSingleKanaEntry(cand, false, e) &&
+              (e[1] || []).some(r => toHiragana(r) === hiraTarget)
+            );
+            if (exactReadingHit) return exactReadingHit;
+          }
+          return best;
+        }
+      }
+      return null;
+    }
+
+    async function requestAiTranslate(text, from, to) {
+      const cacheKey = `${from}|${to}|${text}`;
+      if (aiWordZhCache.has(cacheKey)) return aiWordZhCache.get(cacheKey);
+      const ep = getAiSegmentEndpoint();
+      if (!ep) throw new Error('未設定 AI 翻譯端點');
+      const resp = await fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'translate', text, from, to })
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const translated = String(data?.translated || '').trim();
+      if (!translated) throw new Error('AI 未回傳譯文');
+      const res = {
+        text: translated,
+        reading: String(data?.reading || '').trim(),
+        engine: 'Gemini AI'
+      };
+      aiWordZhCache.set(cacheKey, res);
+      return res;
+    }
+
+    async function requestAiSegmentation(sentence) {
+      const ep = getAiSegmentEndpoint();
+      if (ep) {
+        const resp = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'segment', text: sentence })
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const tokens = Array.isArray(data) ? data : (data && Array.isArray(data.tokens) ? data.tokens : null);
+        if (!tokens) throw new Error('Invalid AI payload');
+        const translation = (data && !Array.isArray(data) && data.translation)
+          ? {
+              zh: String(data.translation.zh || '').trim(),
+              reading: String(data.translation.reading || '').trim()
+            }
+          : null;
+        return { translation, tokens };
+      }
+
+      if (hasChromeBuiltInAi()) {
+        const factory = window.LanguageModel || (window.ai && window.ai.languageModel);
+        const session = await factory.create({
+          systemPrompt: '你是日語文法與詞彙分析助手。請將輸入的日文句子提供整句自然繁體中文翻譯與語意斷詞，僅回傳 JSON 物件（不要 Markdown 標記）：{"translation":{"zh":"整句繁體中文翻譯","reading":"平假名讀音"},"tokens":[{"surface":"原句片段","base":"辭書原型","reading":"平假名讀音","pos":"詞性","zh":"貼合此句上下文的簡潔繁體中文釋義","isParticle":false}]}'
+        });
+        try {
+          const raw = await session.prompt(sentence);
+          const cleaned = String(raw || '').replace(/^```(?:json)?|```$/gm, '').trim();
+          const parsed = JSON.parse(cleaned);
+          const arr = Array.isArray(parsed) ? parsed : (parsed && parsed.tokens);
+          if (!Array.isArray(arr)) throw new Error('Invalid local AI JSON');
+          const translation = (parsed && !Array.isArray(parsed) && parsed.translation)
+            ? {
+                zh: String(parsed.translation.zh || '').trim(),
+                reading: String(parsed.translation.reading || '').trim()
+              }
+            : null;
+          return { translation, tokens: arr };
+        } finally {
+          if (session && typeof session.destroy === 'function') session.destroy();
+        }
+      }
+
+      throw new Error('未設定 AI 拆句端點');
+    }
+
+    async function triggerAiSegmentation(out, token, isManual = false) {
+      if (!out || !out.isSegmented || !out.rawQuery) return;
+      const q = out.rawQuery.trim();
+      if (!q) return;
+
+      if (!isAiSegmentAvailable()) {
+        if (isManual) {
+          alert('尚未設定 AI 拆句端點（請先於 assets/firebase-config.js 填入 Cloudflare Worker 網址，或使用支援內建 AI 的桌面版 Chrome）。');
+        }
+        return;
+      }
+
+      if (aiSegCache.has(q)) {
+        applyAiPayloadToOutput(out, aiSegCache.get(q));
+        if (currentTab === 'search') renderCurrentView();
+        return;
+      }
+
+      out.aiSeg = { state: 'loading', error: '' };
+      if (currentTab === 'search') renderCurrentView();
+
+      try {
+        const { translation, tokens: rawTokens } = await requestAiSegmentation(q);
+        if (token !== searchToken || currentSearchOutput !== out) return;
+        const normalized = rawTokens
+          .filter(t => t && (t.surface || t.base))
+          .map(t => {
+            const surface = String(t.surface || t.base || '').trim();
+            const base = String(t.base || surface).trim();
+            const reading = toHiragana(String(t.reading || '').trim());
+            const pos = String(t.pos || '').trim();
+            const zh = String(t.zh || '').trim();
+            const isParticle = Boolean(t.isParticle || pos === '助詞' || COMMON_PARTICLES.has(base));
+            const bestEntry = findBestLocalEntryForAiToken(surface, base, reading, isParticle);
+            const lookupText = base || surface;
+            const tokenRes = searchSegmentToken({ text: lookupText, isParticle });
+            const inflection = (bestEntry && surface && base && surface !== base)
+              ? { surface, base, path: [] }
+              : null;
+            return {
+              text: lookupText,
+              surfaceText: surface,
+              aiReading: reading,
+              aiPos: pos,
+              aiZh: zh,
+              isParticle,
+              tokenRes,
+              bestEntry,
+              inflection
+            };
+          });
+
+        if (normalized.length === 0) throw new Error('AI 未回傳有效斷詞');
+        const payload = { translation, tokens: normalized };
+        aiSegCache.set(q, payload);
+        applyAiPayloadToOutput(out, payload);
+      } catch (err) {
+        if (token !== searchToken || currentSearchOutput !== out) return;
+        out.aiSeg = { state: 'error', error: (err && err.message) ? err.message : 'AI 拆句失敗' };
+      }
+
+      if (currentTab === 'search') renderCurrentView();
+    }
+
+    function applyAiPayloadToOutput(out, payload) {
+      if (!out.localTokensBackup) out.localTokensBackup = out.tokens;
+      const aiTokens = Array.isArray(payload) ? payload : (payload.tokens || []);
+      const translation = Array.isArray(payload) ? null : (payload.translation || null);
+      out.tokens = aiTokens;
+      out.aiTranslation = translation;
+      out.results = aiTokens.map(t => t.bestEntry).filter(Boolean);
+      out.activeSegmentIndex = -1;
+      out.segViewMode = 'overview';
+      out.aiSeg = { state: 'done', active: true };
+      resultCountEl.textContent = out.tokens.length;
+    }
+
+    function toggleAiSegmentation(out) {
+      if (!out || !out.isSegmented) return;
+      if (out.aiSeg && out.aiSeg.state === 'done' && out.aiSeg.active) {
+        if (out.localTokensBackup) {
+          out.tokens = out.localTokensBackup;
+          out.results = out.tokens.map(t => t.bestEntry).filter(Boolean);
+        }
+        out.aiSeg.active = false;
+        out.activeSegmentIndex = -1;
+        out.segViewMode = 'overview';
+        resultCountEl.textContent = out.tokens.length;
+        renderCurrentView();
+        return;
+      }
+      if (out.aiSeg && out.aiSeg.state === 'done' && !out.aiSeg.active && aiSegCache.has(out.rawQuery.trim())) {
+        applyAiPayloadToOutput(out, aiSegCache.get(out.rawQuery.trim()));
+        renderCurrentView();
+        return;
+      }
+      triggerAiSegmentation(out, searchToken, true);
+    }
+
+    function renderSentenceAiTranslationCard(out) {
+      if (!out || !out.isSegmented) return null;
+      const aiState = out.aiSeg && out.aiSeg.state;
+      const isAiOn = Boolean(aiState === 'done' && out.aiSeg.active);
+      const tr = out.aiTranslation;
+
+      if (aiState === 'loading') {
+        const box = document.createElement('article');
+        box.className = 'word-card translate-card ai-sentence-card is-loading';
+        box.innerHTML = `<div class="tr-dir">AI 整句翻譯與語意解析中…</div>`;
+        return box;
+      }
+
+      if (!isAiOn || !tr || !tr.zh) return null;
+
+      const card = document.createElement('article');
+      card.className = 'word-card translate-card ai-sentence-card';
+      const readingHtml = tr.reading
+        ? `<div class="ai-sentence-reading">${escapeHtml(tr.reading)}</div>`
+        : '';
+      card.innerHTML = `
+        <div class="tr-dir">整句 AI 翻譯 · Gemini</div>
+        ${readingHtml}
+        <div class="tr-out-row">
+          <div class="tr-out ai-sentence-zh">${escapeHtml(tr.zh)}</div>
+          <div class="card-actions">
+            <button class="icon-btn speak-btn" type="button" title="朗讀日文原句" data-speak="${escapeHtml(out.rawQuery)}">${SPEAKER_SVG}</button>
+            <button class="icon-btn copy-btn" type="button" title="複製整句翻譯" data-copy="${escapeHtml(tr.zh)}">${COPY_SVG}</button>
+          </div>
+        </div>
+      `;
+      card.querySelector('[data-speak]').addEventListener('click', (e) => {
+        speakJapanese(e.currentTarget.getAttribute('data-speak'));
+      });
+      const aiZhBtn = card.querySelector('[data-ai-word-zh]');
+        if (aiZhBtn) {
+          aiZhBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const word = aiZhBtn.getAttribute('data-ai-word-zh');
+            const hint = aiZhBtn.getAttribute('data-en-hint');
+            aiZhBtn.disabled = true;
+            aiZhBtn.textContent = '翻譯中…';
+            try {
+              const res = await translateText(`${word}（${hint}）`, 'ja', 'zh-TW');
+              aiWordZhCache.set(`ja-word|zh-TW|${word}`, { text: res.text });
+              const parentBox = aiZhBtn.parentElement;
+              if (parentBox) {
+                parentBox.className = 'zh-meanings zh-compact';
+                parentBox.innerHTML = `<span class="zh-pill">${escapeHtml(res.text)}</span><span class="card-gloss-sub">（${escapeHtml(hint)}）</span>`;
+              }
+            } catch (err) {
+              aiZhBtn.disabled = false;
+              aiZhBtn.textContent = '補中文';
+            }
+          });
+        }
+        card.querySelector('[data-copy]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        copyWordText(e.currentTarget.getAttribute('data-copy'), e.currentTarget);
+      });
+      return card;
+    }
+
     // 渲染「逐詞對照一覽」極簡卡片列表 ＋ 底部同音詞補充連結
     function renderSegmentOverview(out) {
       const wrap = document.createElement('div');
@@ -2164,21 +2556,34 @@
         const card = document.createElement('article');
 
         if (!entry) {
-          card.className = 'word-card seg-overview-card';
+          const hasAiInfo = Boolean(tok.aiZh || tok.aiPos || tok.aiReading);
+          const displayWord = tok.text || tok.surfaceText || '';
+          const showAiReading = tok.aiReading && tok.aiReading !== displayWord;
+          const surfaceNote = (tok.surfaceText && tok.surfaceText !== displayWord)
+            ? `<span class="seg-card-surface">（原句：${escapeHtml(tok.surfaceText)}）</span>`
+            : '';
+          card.className = 'word-card seg-overview-card' + (tok.isParticle ? ' is-particle' : '');
           card.innerHTML = `
             <div class="seg-card-main">
+              ${showAiReading ? `<div class="seg-card-reading">${escapeHtml(tok.aiReading)}</div>` : ''}
               <div class="seg-card-title">
-                <span>${escapeHtml(tok.text)}</span>
-                <span class="pos-tag">未收錄</span>
+                <span>${escapeHtml(displayWord)}</span>
+                <span class="pos-tag">${escapeHtml(hasAiInfo ? (tok.aiPos || 'AI 拆解') : '未收錄')}</span>
+                ${surfaceNote}
               </div>
-              <div class="seg-card-gloss">詞庫未收錄此片段</div>
+              <div class="seg-card-gloss${tok.isParticle ? ' is-grammar' : ''}">${escapeHtml(hasAiInfo ? (tok.aiZh || 'AI 語意切分') : '詞庫未收錄此片段')}</div>
             </div>
             <div class="card-actions">
-              <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(tok.text)}">${SPEAKER_SVG}</button>
+              <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(tok.aiReading || displayWord)}">${SPEAKER_SVG}</button>
+              <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(displayWord)}">${COPY_SVG}</button>
             </div>
           `;
           card.querySelector('[data-speak]').addEventListener('click', (e) => {
             speakJapanese(e.currentTarget.getAttribute('data-speak'));
+          });
+          card.querySelector('[data-copy]').addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyWordText(e.currentTarget.getAttribute('data-copy'), e.currentTarget);
           });
           list.appendChild(card);
           return;
@@ -2189,7 +2594,7 @@
         const primaryReading = toHiragana(kanas[0] || '');
         const showReading = kanjis.length > 0 && primaryReading && primaryReading !== primaryWord;
         const posText = primaryPosText(entry, tok.isParticle);
-        const meaningText = primaryMeaningText(entry, tok.text, tok.isParticle);
+        const meaningText = (tok.aiZh && out.aiSeg && out.aiSeg.active) ? tok.aiZh : primaryMeaningText(entry, tok.text, tok.isParticle);
         const fav = isFavorite(entry);
         const inf = tok.inflection;
         const surfaceBadge = inf && inf.surface !== primaryWord
@@ -2209,6 +2614,7 @@
           </div>
           <div class="card-actions">
             <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
+            <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
             <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" title="${fav ? '取消收藏' : '加入收藏'}">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
             </button>
@@ -2222,6 +2628,10 @@
         card.querySelector('.fav-btn').addEventListener('click', () => toggleFavorite(entry));
         card.querySelector('[data-speak]').addEventListener('click', (e) => {
           speakJapanese(e.currentTarget.getAttribute('data-speak'));
+        });
+        card.querySelector('[data-copy]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          copyWordText(e.currentTarget.getAttribute('data-copy'), e.currentTarget);
         });
 
         list.appendChild(card);
@@ -2305,6 +2715,21 @@
         });
         segmentBar.appendChild(btn);
       });
+
+      const aiBtn = document.createElement('button');
+      aiBtn.type = 'button';
+      const aiState = out.aiSeg && out.aiSeg.state;
+      const isAiActive = Boolean(aiState === 'done' && out.aiSeg.active);
+      aiBtn.className = 'seg-ai-btn' + (isAiActive ? ' is-active' : '');
+      aiBtn.disabled = aiState === 'loading';
+      aiBtn.textContent = aiState === 'loading'
+        ? 'AI 拆句中…'
+        : isAiActive
+          ? 'AI 拆句 ✓'
+          : 'AI 拆句';
+      aiBtn.title = isAiActive ? '點擊切回純本地規則斷詞' : '使用 AI 依語意重新拆句';
+      aiBtn.addEventListener('click', () => toggleAiSegmentation(out));
+      segmentBar.appendChild(aiBtn);
 
       segmentBar.style.display = 'flex';
     }
@@ -2855,6 +3280,37 @@
     });
 
     const SPEAKER_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>';
+    const COPY_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    const CHECK_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+    async function copyWordText(text, btnEl) {
+      const val = String(text || '').trim();
+      if (!val) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(val);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = val;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        if (btnEl) {
+          const origHtml = btnEl.innerHTML;
+          btnEl.classList.add('is-copied');
+          btnEl.innerHTML = CHECK_SVG;
+          clearTimeout(btnEl._copyTimer);
+          btnEl._copyTimer = setTimeout(() => {
+            btnEl.classList.remove('is-copied');
+            btnEl.innerHTML = origHtml;
+          }, 1100);
+        }
+      } catch (e) {}
+    }
 
     function renderDetailPage(entry, inf) {
       const [kanjis, kanas, isCommon, senses, zhs] = entry;
@@ -2931,6 +3387,7 @@
             </div>
             <div class="card-actions">
               <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
+              <button class="icon-btn copy-btn" type="button" id="detailCopy" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
               <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" id="detailFav" title="${fav ? '取消收藏' : '加入收藏'}">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
               </button>
@@ -2952,6 +3409,13 @@
         else { closeDetail(); renderCurrentView(); window.scrollTo(0, savedScrollY); }
       });
       page.querySelector('#detailFav').addEventListener('click', () => toggleFavorite(entry));
+      const detailCopyBtn = page.querySelector('#detailCopy');
+      if (detailCopyBtn) {
+        detailCopyBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          copyWordText(e.currentTarget.getAttribute('data-copy'), e.currentTarget);
+        });
+      }
       const jump = page.querySelector('#hitJump');
       if (jump) jump.addEventListener('click', () => {
         const row = page.querySelector('.conj-hit');
@@ -3105,7 +3569,13 @@
         if (cleanZhs.length > 0) {
           zhHtml = `<div class="zh-meanings zh-compact">${cleanZhs.map(z => `<span class="zh-pill">${escapeHtml(z)}</span>`).join('')}</div>`;
         } else if (senses && senses[0] && senses[0].g && senses[0].g.length > 0) {
-          zhHtml = `<div class="card-gloss-fallback">${escapeHtml(senses[0].g.slice(0, 3).join('; '))}</div>`;
+          const enPreview = senses[0].g.slice(0, 3).join('; ');
+          const cachedWordZh = aiWordZhCache.get(`ja-word|zh-TW|${primaryWord}`);
+          if (cachedWordZh && cachedWordZh.text) {
+            zhHtml = `<div class="zh-meanings zh-compact"><span class="zh-pill">${escapeHtml(cachedWordZh.text)}</span><span class="card-gloss-sub">（${escapeHtml(enPreview)}）</span></div>`;
+          } else {
+            zhHtml = `<div class="card-gloss-fallback"><span>${escapeHtml(enPreview)}</span><button type="button" class="inline-ai-zh-btn" data-ai-word-zh="${escapeHtml(primaryWord)}" data-en-hint="${escapeHtml(enPreview)}">補中文</button></div>`;
+          }
         }
 
         const hasBelow = Boolean(inflHtml || zhHtml);
@@ -3127,6 +3597,7 @@
                   <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
                 </svg>
               </button>
+              <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
               <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" title="${fav ? '取消收藏' : '加入收藏'}">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -3147,6 +3618,12 @@
         card.querySelectorAll('[data-speak]').forEach(btn => {
           btn.addEventListener('click', () => speakJapanese(btn.getAttribute('data-speak')));
         });
+        card.querySelectorAll('[data-copy]').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyWordText(btn.getAttribute('data-copy'), btn);
+          });
+        });
 
         container.appendChild(card);
       });
@@ -3159,6 +3636,7 @@
       closeDetail();
       const token = ++searchToken;
       clearTimeout(translateTimer);
+      clearTimeout(aiSegTimer);
       currentSearchOutput = executeSmartSearch(query);
       const displayCount = currentSearchOutput.isSegmented
         ? currentSearchOutput.tokens.length
@@ -3173,6 +3651,16 @@
       if (needTranslate) {
         currentSearchOutput.translate = { state: 'loading', query: q };
         startTranslate(q, token);
+      }
+
+      // 長句（超過 6 個字）且有可用 AI 拆句服務時，先顯示本地斷詞並自動背景增強
+      if (isDbReady && currentSearchOutput.isSegmented && [...q].length > 6 && isAiSegmentAvailable()) {
+        const segTarget = currentSearchOutput;
+        aiSegTimer = setTimeout(() => {
+          if (token === searchToken && currentSearchOutput === segTarget) {
+            triggerAiSegmentation(segTarget, token, false);
+          }
+        }, 420);
       }
 
       if (saveHist && q && (currentSearchOutput.isSegmented || currentSearchOutput.results.length > 0 || currentSearchOutput.mode === 'num')) {
@@ -3505,6 +3993,7 @@
             <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(reading || word)}">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
             </button>
+            <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(word)}">${COPY_SVG}</button>
             <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" title="${fav ? '取消收藏' : '加入收藏'}">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
             </button>
@@ -3516,6 +4005,10 @@
         });
         card.querySelector('.fav-btn').addEventListener('click', () => toggleFavorite(entry));
         card.querySelector('[data-speak]').addEventListener('click', (e) => speakJapanese(e.currentTarget.getAttribute('data-speak')));
+        card.querySelector('[data-copy]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          copyWordText(e.currentTarget.getAttribute('data-copy'), e.currentTarget);
+        });
         list.appendChild(card);
       });
       return list;
@@ -3571,12 +4064,19 @@
 
         if (out.isSegmented) {
           if (out.segViewMode === 'overview') {
+            const isAiOn = Boolean(out.aiSeg && out.aiSeg.state === 'done' && out.aiSeg.active);
+            const aiErrNote = (out.aiSeg && out.aiSeg.state === 'error')
+              ? `<div class="seg-ai-note">AI 拆句暫時無法連線（已顯示本地離線斷詞）：${escapeHtml(out.aiSeg.error || '')}</div>`
+              : '';
             strategyArea.innerHTML = `
               <div class="strategy-banner">
                 <span>已斷詞為 ${out.tokens.length} 個詞彙（點擊卡片看詳細，點擊上方斷詞膠囊查同音詞）</span>
-                <span class="mode-tag mode-jp">逐詞對照一覽</span>
+                <span class="mode-tag mode-jp">${isAiOn ? 'AI 語意拆解' : '逐詞對照一覽'}</span>
               </div>
+              ${aiErrNote}
             `;
+            const aiSentenceCard = renderSentenceAiTranslationCard(out);
+            if (aiSentenceCard) mainContent.appendChild(aiSentenceCard);
             mainContent.appendChild(renderSegmentOverview(out));
             return;
           }
@@ -3815,9 +4315,49 @@
       scheduleCloudSyncPush();
     }
 
+    const SIMP_ONLY_CHAR_SET = (() => {
+      const s = new Set();
+      TRAD_SIMP_PAIRS.forEach(pair => {
+        if (pair.length % 2 === 0) {
+          const half = pair.length / 2;
+          for (let i = 0; i < half; i++) {
+            if (pair[i] !== pair[i + half]) s.add(pair[i + half]);
+          }
+        }
+      });
+      return s;
+    })();
+
+    const TRAD_ONLY_CHAR_SET = (() => {
+      const s = new Set();
+      TRAD_SIMP_PAIRS.forEach(pair => {
+        if (pair.length % 2 === 0) {
+          const half = pair.length / 2;
+          for (let i = 0; i < half; i++) {
+            if (pair[i] !== pair[i + half]) s.add(pair[i]);
+          }
+        }
+      });
+      return s;
+    })();
+
+    function scoreTraditionalChinese(str) {
+      let score = 0;
+      for (const ch of String(str || '')) {
+        if (TRAD_ONLY_CHAR_SET.has(ch)) score += 2;
+        if (SIMP_ONLY_CHAR_SET.has(ch)) score -= 3;
+      }
+      return score;
+    }
+
     function getCleanZhList(entry) {
       const zhs = (entry && entry[4]) || [];
-      return zhs.filter(z => z && !/[㐀-䶿]/.test(z));
+      const filtered = zhs.filter(z => z && !/[㐀-䶿]/.test(z));
+      if (filtered.length <= 1) return filtered;
+      return filtered
+        .map((text, idx) => ({ text, idx, score: scoreTraditionalChinese(text) }))
+        .sort((a, b) => (b.score - a.score) || (a.idx - b.idx))
+        .map(item => item.text);
     }
 
     function hasValidQuizZh(entry) {
@@ -3994,6 +4534,22 @@
         }
       }
 
+      // 均衡分配題型（確保日翻中與中翻日各佔約一半，避免連續隨機偏向單一題型）
+      const mixed = shuffled(picked);
+      if (mixed.length > 0) {
+        const half = Math.floor(mixed.length / 2);
+        const jp2zhCount = mixed.length % 2 === 0
+          ? half
+          : (Math.random() < 0.5 ? half : half + 1);
+        const modes = shuffled([
+          ...Array(jp2zhCount).fill('jp2zh'),
+          ...Array(mixed.length - jp2zhCount).fill('zh2jp')
+        ]);
+        mixed.forEach((q, i) => {
+          q.mode = modes[i];
+        });
+      }
+
       return {
         version: 1,
         date: today,
@@ -4001,7 +4557,7 @@
         completed: false,
         sourceType,
         currentIndex: 0,
-        questions: shuffled(picked),
+        questions: mixed,
         remainingCarryoverIds
       };
     }
@@ -4127,21 +4683,23 @@
 
       if (candidates.includes(userNorm)) return true;
 
-      // 同義詞容錯：透過 zhBridge 比對使用者輸入的中文與詞條英文核心釋義是否相符
+      // 同義詞容錯：透過 zhBridge 反向比對詞條中文釋義（或輸入中文）對應的英文核心釋義是否相符
       if (zhBridge && entry && Array.isArray(entry[3])) {
-        const bridgeHits = zhBridge[rawTrimmed] || [];
-        if (bridgeHits.length > 0) {
-          const userEnSet = new Set();
-          bridgeHits.forEach(def => {
-            def.split(';').forEach(p => {
+        const entryEnSet = new Set();
+        for (const sn of entry[3]) {
+          for (const g of (sn.g || [])) {
+            const gClean = stripParens(g).toLowerCase().replace(/^to\s+/, '').trim();
+            if (gClean) entryEnSet.add(gClean);
+          }
+        }
+
+        const zhLookupKeys = new Set([rawTrimmed, userNorm, ...zhs]);
+        for (const key of zhLookupKeys) {
+          const bridgeHits = (key && zhBridge[key]) || [];
+          for (const def of bridgeHits) {
+            for (const p of def.split(';')) {
               const clean = stripParens(p).toLowerCase().replace(/^to\s+/, '').trim();
-              if (clean) userEnSet.add(clean);
-            });
-          });
-          for (const sn of entry[3]) {
-            for (const g of (sn.g || [])) {
-              const gClean = stripParens(g).toLowerCase().replace(/^to\s+/, '').trim();
-              if (gClean && userEnSet.has(gClean)) return true;
+              if (clean && entryEnSet.has(clean)) return true;
             }
           }
         }
@@ -4188,7 +4746,9 @@
       return accepted.has(raw) || accepted.has(userHira) || accepted.has(userKata);
     }
 
-    // ===== 錯題庫區塊（顯示於「我的收藏」分頁下方，支援單筆刪除與清空）=====
+    // ===== 錯題庫區塊（顯示於「我的收藏」分頁下方，支援收合、單筆刪除與清空）=====
+    let isWrongBankCollapsed = false;
+
     function clearWrongBank() {
       const now = Date.now();
       const nextItems = {};
@@ -4218,13 +4778,29 @@
       const header = document.createElement('div');
       header.className = 'wrong-bank-header';
       header.innerHTML = `
-        <h3 class="wrong-bank-title">
+        <button class="wrong-bank-toggle" id="toggleWrongBankBtn" type="button" aria-expanded="${!isWrongBankCollapsed}">
+          <span class="wrong-bank-chevron${isWrongBankCollapsed ? ' is-collapsed' : ''}" aria-hidden="true">▾</span>
           <span>錯題庫</span>
           ${resolved.length > 0 ? `<span class="wrong-bank-count">${resolved.length}</span>` : ''}
-        </h3>
-        ${resolved.length > 0 ? `<button class="text-btn" id="clearWrongBankBtn" type="button">清空錯題</button>` : ''}
+        </button>
+        <div class="wrong-bank-header-actions">
+          ${resolved.length > 0 ? `<button class="text-btn" id="collapseWrongBankTextBtn" type="button">${isWrongBankCollapsed ? '展開' : '收合'}</button>` : ''}
+          ${resolved.length > 0 ? `<button class="text-btn" id="clearWrongBankBtn" type="button">清空錯題</button>` : ''}
+        </div>
       `;
       section.appendChild(header);
+
+      const toggleCollapse = () => {
+        isWrongBankCollapsed = !isWrongBankCollapsed;
+        renderCurrentView();
+      };
+      header.querySelector('#toggleWrongBankBtn').addEventListener('click', toggleCollapse);
+      const colTextBtn = header.querySelector('#collapseWrongBankTextBtn');
+      if (colTextBtn) colTextBtn.addEventListener('click', toggleCollapse);
+
+      if (isWrongBankCollapsed) {
+        return section;
+      }
 
       if (resolved.length === 0) {
         const empty = document.createElement('div');
@@ -4270,6 +4846,7 @@
             </div>
             <div class="card-actions">
               <button class="icon-btn speak-btn" type="button" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
+              <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
               <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" type="button" title="${fav ? '取消收藏' : '加入收藏'}">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
               </button>
@@ -4287,6 +4864,10 @@
         });
         card.querySelector('[data-speak]').addEventListener('click', (e) => {
           speakJapanese(e.currentTarget.getAttribute('data-speak'));
+        });
+        card.querySelector('[data-copy]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          copyWordText(e.currentTarget.getAttribute('data-copy'), e.currentTarget);
         });
         card.querySelector('.fav-btn').addEventListener('click', () => {
           toggleFavorite(entry);
@@ -4476,6 +5057,9 @@
           ${promptHtml}
           ${bodyHtml}
         </article>
+        <div class="quiz-exit-wrap">
+          <button class="quiz-exit-link" id="quizAbandonBtn" type="button">離開</button>
+        </div>
       `;
 
       wrap.querySelectorAll('[data-speak]').forEach(btn => {
@@ -4522,6 +5106,16 @@
         }
         wrap.querySelector('#quizSubmitBtn').addEventListener('click', () => handleEvaluate(false));
         wrap.querySelector('#quizRevealBtn').addEventListener('click', () => handleEvaluate(true));
+        const abandonBtnUnans = wrap.querySelector('#quizAbandonBtn');
+        if (abandonBtnUnans) {
+          abandonBtnUnans.addEventListener('click', () => {
+            if (confirm('確定要放棄本次小考嗎？放棄後不會記錄今日完成，下次進入會重新出題。')) {
+              activeQuizState = null;
+              syncQuizLockClass();
+              goHomeSearch();
+            }
+          });
+        }
       } else {
         const favBtn = wrap.querySelector('#quizRevealFavBtn');
         if (favBtn) {
@@ -4530,6 +5124,16 @@
             const nowFav = isFavorite(entry);
             favBtn.classList.toggle('is-fav', nowFav);
             favBtn.textContent = nowFav ? '♥ 已收藏' : '♡ 收藏';
+          });
+        }
+        const abandonBtn = wrap.querySelector('#quizAbandonBtn');
+        if (abandonBtn) {
+          abandonBtn.addEventListener('click', () => {
+            if (confirm('確定要放棄本次小考嗎？放棄後不會記錄今日完成，下次進入會重新出題。')) {
+              activeQuizState = null;
+              syncQuizLockClass();
+              goHomeSearch();
+            }
           });
         }
         const nextBtn = wrap.querySelector('#quizNextBtn');
@@ -4604,14 +5208,19 @@
         e.stopPropagation();
         if (!currentCloudUser) {
           triggerGoogleSignIn();
+        } else if (isAccountPopoverOpen) {
+          closeAccountPopover();
         } else {
-          const label = currentCloudUser.email || currentCloudUser.displayName || '此 Google 帳號';
-          if (confirm(`目前登入帳號：${label}\n確定要登出嗎？`)) {
-            triggerGoogleSignOut();
-          }
+          openAccountPopover(currentCloudUser);
         }
       });
     }
+    document.addEventListener('click', () => {
+      if (isAccountPopoverOpen) closeAccountPopover();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isAccountPopoverOpen) closeAccountPopover();
+    });
 
     updateCounts();
     updateQuizPendingDot();
