@@ -3,10 +3,9 @@
  * 環境變數需設定：GEMINI_API_KEY
  */
 const MODELS = [
-  'gemini-3.8-flash-lite',
   'gemini-3.8-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-flash'
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite'
 ];
 
 const CORS_HEADERS = {
@@ -23,40 +22,54 @@ function jsonResponse(data, status = 200) {
   });
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function callGeminiWithFallback(apiKey, prompt) {
   const errors = [];
   for (const model of MODELS) {
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json'
+    const maxAttempts = model === 'gemini-3.8-flash' ? 4 : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: 'application/json'
+            }
+          })
+        });
+
+        if (!res.ok) {
+          const errDetail = (await res.text().catch(() => '')).slice(0, 140);
+          errors.push(`${model}(#${attempt}) HTTP ${res.status}${errDetail ? `: ${errDetail}` : ''}`);
+          if ((res.status === 503 || res.status === 429) && attempt < maxAttempts) {
+            await sleep(700 * attempt);
+            continue;
           }
-        })
-      });
+          break;
+        }
 
-      if (!res.ok) {
-        const errDetail = (await res.text().catch(() => '')).slice(0, 140);
-        errors.push(`${model} HTTP ${res.status}${errDetail ? `: ${errDetail}` : ''}`);
-        continue;
+        const data = await res.json();
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!rawText) {
+          errors.push(`${model}(#${attempt}) empty candidate`);
+          break;
+        }
+
+        const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+        return { parsed: JSON.parse(cleaned), model };
+      } catch (err) {
+        errors.push(`${model}(#${attempt}): ${err.message || err}`);
+        if (attempt < maxAttempts) {
+          await sleep(700 * attempt);
+        }
       }
-
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) {
-        errors.push(`${model} empty candidate`);
-        continue;
-      }
-
-      const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
-      return { parsed: JSON.parse(cleaned), model };
-    } catch (err) {
-      errors.push(`${model}: ${err.message || err}`);
     }
   }
   throw new Error(errors.join(' | ') || 'All Gemini models failed');
