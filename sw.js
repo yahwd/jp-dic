@@ -1,6 +1,6 @@
 /* 雪妖精の辭書 — Service Worker
  * 更換 data 檔案或大幅改版時，請同步把這裡與 assets/app.js 的 CACHE_NAME 版本號一起加 1。 */
-const CACHE_NAME = 'yukiyosei-v17';
+const CACHE_NAME = 'yukiyosei-v18';
 
 const SHELL = [
   './',

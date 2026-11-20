@@ -631,7 +631,7 @@
     const histCountEl = document.getElementById('histCount');
 
     // 版本號需與 sw.js 的 CACHE_NAME 相同；更換 data 檔案後兩邊一起加 1
-    const CACHE_NAME = 'yukiyosei-v17';
+    const CACHE_NAME = 'yukiyosei-v18';
 
     function formatMB(bytes) {
       return (bytes / 1048576).toFixed(1) + ' MB';
