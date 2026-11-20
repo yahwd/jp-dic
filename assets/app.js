@@ -2,6 +2,84 @@
     let zhBridge = {};
     let isDbReady = false;
 
+    // 繁簡中文常用字對照表（確保日漢釋義比對兼容繁體與簡體中文）
+    const TRAD_SIMP_PAIRS = [
+      '學学','習习','語语','詞词','辭辞','書书','讀读','寫写','聽听','說说','話话','請请','謝谢',
+      '車车','電电','駅站','站站','飛飞','機机','場场','船船','鐵铁','線线','路路','地圖地图',
+      '買买','賣卖','錢钱','銀银','價价','貴贵','便便','免費免费','割引折扣','現金现金','領収書收据',
+      '飲饮','食食','飯饭','麵面','湯汤','魚鱼','鳥鸟','肉肉','菜菜','菓果','茶茶','酒酒','燒烧','揚げ炸',
+      '壽司寿司','拉麵拉面','味噌湯味噌汤','丼盖饭','便當便当','點心点心','甜點甜点','好吃美味',
+      '雪雪','雲云','風风','雨雨','晴晴','陰阴','霧雾','雷雷','氣气','溫温','冷冷','熱热','暖暖','凍冻',
+      '溫泉温泉','風呂浴池','湯船浴缸','旅館旅馆','飯店饭店','房間房间','鑰匙钥匙','預約预约','行李行李',
+      '護照护照','簽證签证','觀光观光','旅遊旅游','風景风景','櫻花樱花','紅葉红叶','寺廟寺庙','繪馬绘马',
+      '運動运动','健身健身','肌肉肌肉','體力体力','體重体重','練習练习','考試考试','問題问题','答案答案',
+      '時間时间','時时','分分','秒秒','今天今日','明天明日','昨天昨日','星期周','週周','年年','月月','日日',
+      '電話电话','電腦电脑','網路网络','手機手机','相機相机','照片照片','音樂音乐','電影电影','電視电视',
+      '醫院医院','醫生医生','藥药','感冒感冒','發燒发烧','頭痛头痛','肚子腹','身體身体','眼睛眼','耳朵耳',
+      '頭髮头发','臉脸','手手','腳脚','心心','愛爱','喜歡喜欢','討厭讨厌','高興高兴','快樂快乐','難過难过',
+      '生氣生气','害怕害怕','擔心担心','安心安心','危險危险','安全安全','方便方便','麻煩麻烦','簡單简单',
+      '困難困难','重要重要','特別特别','普通普通','一樣一样','不同不同','開始开始','結束结束','繼續继续',
+      '準備准备','決定决定','選擇选择','幫助帮助','幫忙帮忙','照顧照顾','介紹介绍','說明说明','確認确认',
+      '發現发现','發明发明','變化变化','發展发展','經驗经验','知識知识','文化文化','傳統传统','歷史历史',
+      '經濟经济','政治政治','社會社会','環境环境','自然自然','動物动物','植物植物','花花','草草','樹树',
+      '山山','川川','海海','河河','湖湖','島岛','國国','都市城市','鄉下乡下','公園公园','圖書館图书馆',
+      '銀行银行','郵局邮局','警察警察','學校学校','老師老师','學生学生','同學同学','朋友朋友','家人家人',
+      '父親父亲','母親母亲','哥哥兄','姊姊姐','弟弟弟','妹妹妹','丈夫丈夫','妻子妻子','孩子小孩','寶寶宝宝',
+      '男男','女女','大人大人','老人老人','年輕年轻','漂亮美丽','帥氣帅气','可愛可爱','溫柔温柔','親切亲切',
+      '認真认真','努力努力','聰明聪明','厲害厉害','糟糕糟糕','奇怪奇怪','安靜安静','熱鬧热闹','乾淨干净',
+      '髒脏','新新','舊旧','長长','短短','高高','矮矮','胖胖','瘦瘦','強强','弱弱','快快','慢慢','早早','晚晚',
+      '多多少','少少','大大小','小小','遠远','近近','左左','右右','前前','後后','裡里','外外','上上','下下',
+      '紅红','藍蓝','綠绿','黃黄','白白','黑黑','灰灰','粉紅粉红','紫色紫色','金色金色','銀色银色',
+      '門门','窗窗','桌子桌','椅子椅','床床','燈灯','鏡子镜子','傘伞','衣服衣','褲子裤子','鞋子鞋','帽子帽',
+      '眼鏡眼镜','手錶手表','包包包','錢包钱包','毛巾毛巾','肥皂肥皂','牙刷牙刷','衛生紙卫生纸','垃圾垃圾',
+      '開开','關关','進进','出出','來来','去去','回回','走走','跑跑','跳跳','站站','坐坐','睡睡','醒醒',
+      '看观','見见','聞闻','嚐尝','摸摸','拿取','放放','給给','收收','借借','還还','送送','接接','找寻',
+      '忘忘','記记','想思','知道知','懂理解','會能','做作','工作工作','休息休息','玩玩','唱唱','畫画'
+    ];
+
+    const TRAD_TO_SIMP_MAP = (() => {
+      const m = new Map();
+      TRAD_SIMP_PAIRS.forEach(pair => {
+        if (pair.length === 2) {
+          m.set(pair[0], pair[1]);
+        } else if (pair.length % 2 === 0) {
+          const half = pair.length / 2;
+          for (let i = 0; i < half; i++) {
+            m.set(pair[i], pair[i + half]);
+          }
+        }
+      });
+      return m;
+    })();
+
+    function normalizeChineseForCompare(str) {
+      const cleaned = String(str || '')
+        .toLowerCase()
+        .replace(/[\s　・･·\-—_~〜～!！?？。．.「」『』【】《》〈〉"'’“”]/g, '');
+      let out = '';
+      for (const ch of cleaned) {
+        out += TRAD_TO_SIMP_MAP.get(ch) || ch;
+      }
+      return out;
+    }
+
+    function stripParens(str) {
+      let prev = String(str || '');
+      let next = prev.replace(/（[^（）]*）|\([^()]*\)/g, '');
+      while (next !== prev) {
+        prev = next;
+        next = prev.replace(/（[^（）]*）|\([^()]*\)/g, '');
+      }
+      return next;
+    }
+
+    const SIMP_ONLY_CHAR_SET = new Set(
+      [...TRAD_TO_SIMP_MAP.entries()].filter(([t, s]) => t !== s).map(([, s]) => s)
+    );
+    const TRAD_ONLY_CHAR_SET = new Set(
+      [...TRAD_TO_SIMP_MAP.entries()].filter(([t, s]) => t !== s).map(([t]) => t)
+    );
+
     // ===== Local-First 雙向合併同步與多帳號防呆（Firebase Auth + Firestore Ready）=====
     const STORAGE_KEYS = {
       favs: 'private_jp_favs',
@@ -631,7 +709,7 @@
     const histCountEl = document.getElementById('histCount');
 
     // 版本號需與 sw.js 的 CACHE_NAME 相同；更換 data 檔案後兩邊一起加 1
-    const CACHE_NAME = 'yukiyosei-v18';
+    const CACHE_NAME = 'yukiyosei-v24';
 
     function formatMB(bytes) {
       return (bytes / 1048576).toFixed(1) + ' MB';
@@ -893,10 +971,40 @@
       };
     }
 
-    // ===== 線上翻譯備援（詞庫查不到時使用）=====
+    // ===== 線上翻譯與 Cloudflare Worker Gemini AI 備援 =====
     const translateCache = new Map();
+    const aiWordZhCache = new Map();
+    const aiSegmentCache = new Map();
+    const aiSegmentTokenCache = new Map();
     let searchToken = 0;
     let translateTimer = null;
+
+    function getAiWorkerEndpoint() {
+      const ep = (window.YUKIYOSEI_AI_SEGMENT_ENDPOINT || '').trim();
+      if (!ep || ep.includes('your-subdomain.workers.dev')) return '';
+      return ep;
+    }
+
+    async function callAiWorker(payload, timeoutMs = 10000) {
+      const endpoint = getAiWorkerEndpoint();
+      if (!endpoint) throw new Error('AI endpoint not configured');
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal
+        });
+        if (!res.ok) throw new Error('Worker HTTP ' + res.status);
+        const data = await res.json();
+        if (!data || !data.ok) throw new Error((data && data.error) || 'Worker invalid response');
+        return data;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
 
     function fetchWithTimeout(url, ms = 7000) {
       const ctrl = new AbortController();
@@ -925,9 +1033,27 @@
       return out;
     }
 
-    async function translateText(text, from, to) {
-      const key = `${from}|${to}|${text}`;
+    async function translateText(text, from, to, wordHint = '') {
+      const key = `${from}|${to}|${wordHint}|${text}`;
       if (translateCache.has(key)) return translateCache.get(key);
+
+      if (getAiWorkerEndpoint()) {
+        try {
+          const aiRes = await callAiWorker({ mode: 'translate', text, from, to, word: wordHint }, 9500);
+          if (aiRes.translation) {
+            const result = {
+              text: aiRes.translation,
+              reading: aiRes.reading || '',
+              engine: 'Gemini AI'
+            };
+            translateCache.set(key, result);
+            return result;
+          }
+        } catch (e) {
+          // Worker 無網路或失敗時，自動退回 Google 翻譯 / MyMemory 免費保底
+        }
+      }
+
       let result;
       try {
         result = { text: await translateViaGoogle(text, from, to), engine: 'Google 翻譯' };
@@ -940,17 +1066,17 @@
 
     const LANG_LABEL = { 'ja': '日文', 'en': '英文', 'zh-TW': '中文' };
 
-    // 日文 -> 英文；中文／英文 -> 日文
+    // 日文 -> 繁體中文；中文／英文 -> 日文
     async function translateFallback(q) {
       let from, to;
-      if (hasKana(q)) { from = 'ja'; to = 'en'; }
+      if (hasKana(q)) { from = 'ja'; to = 'zh-TW'; }
       else if (hasHanzi(q)) { from = 'zh-TW'; to = 'ja'; }
       else { from = 'en'; to = 'ja'; }
 
       let r = await translateText(q, from, to);
-      // 純漢字詞翻回來一樣 -> 其實是日文漢字，改翻成英文
+      // 純漢字詞翻回來一樣 -> 其實是日文漢字，改翻成繁體中文
       if (to === 'ja' && r.text === q.trim()) {
-        from = 'ja'; to = 'en';
+        from = 'ja'; to = 'zh-TW';
         r = await translateText(q, from, to);
       }
 
@@ -973,7 +1099,7 @@
           if (matches.length >= 8) break;
         }
       }
-      return { text: r.text, engine: r.engine, from, to, matches };
+      return { text: r.text, reading: r.reading || '', engine: r.engine, from, to, matches };
     }
 
     function startTranslate(query, token) {
@@ -1033,8 +1159,9 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
         </button>` : '';
       card.innerHTML = `
-        <div class="tr-dir">${LANG_LABEL[t.from] || t.from} → ${LANG_LABEL[t.to] || t.to} · ${escapeHtml(t.engine)}（機器翻譯，僅供參考）</div>
+        <div class="tr-dir">${LANG_LABEL[t.from] || t.from} → ${LANG_LABEL[t.to] || t.to} · ${escapeHtml(t.engine)}（僅供參考）</div>
         <div class="tr-src">${escapeHtml(t.query)}</div>
+        ${t.reading ? `<div class="ai-sentence-reading">${escapeHtml(t.reading)}</div>` : ''}
         <div class="tr-out-row">
           <div class="tr-out">${escapeHtml(t.text)}</div>
           ${speakBtn}
@@ -1142,6 +1269,9 @@
     (function buildRules() {
       // --- 一段動詞 ---
       R('ない', 'る', FIN, 'v1', 'ない形（否定）');
+      R('ないで', 'る', FIN, 'v1', 'ないで（否定連接）');
+      R('なくちゃ', 'る', FIN, 'v1', 'なくちゃ（必須）');
+      R('なきゃ', 'る', FIN, 'v1', 'なきゃ（必須）');
       R('なかった', 'る', FIN, 'v1', 'なかった形（過去否定）');
       R('ます', 'る', FIN, 'v1', 'ます形（禮貌）');
       R('ました', 'る', FIN, 'v1', 'ました（禮貌過去）');
@@ -1171,6 +1301,9 @@
       ];
       G.forEach(([u, a, i, e, o, te, ta]) => {
         R(a + 'ない', u, FIN, 'v5', 'ない形（否定）');
+        R(a + 'ないで', u, FIN, 'v5', 'ないで（否定連接）');
+        R(a + 'なくちゃ', u, FIN, 'v5', 'なくちゃ（必須）');
+        R(a + 'なきゃ', u, FIN, 'v5', 'なきゃ（必須）');
         R(a + 'なかった', u, FIN, 'v5', 'なかった形（過去否定）');
         R(i + 'ます', u, FIN, 'v5', 'ます形（禮貌）');
         R(i + 'ました', u, FIN, 'v5', 'ました（禮貌過去）');
@@ -1786,7 +1919,18 @@
       'びょういん', '病院', 'ぎんこう', '銀行', 'としょかん', '図書館', 'こうえん', '公園'
     ]);
 
-    const RE_SEG_PUNCT = /[\s　、-〄〈-〠〰〽・！-／：-＠［-｀｛-･!"#$%&'()*+,\-./:;<=>?@[\\]^_`{|}~…‥]/;
+    // 計算不含半形空白（ ）與全形空白（　）的字數
+    function nonSpaceLength(str) {
+      return [...String(str || '').replace(/[\s　]+/g, '')].length;
+    }
+
+    const RE_SEG_PUNCT = /[。．、，、-〄〈-〠〰〽・！-／：-＠［-｀｛-･!"#$%&'()*+,\-./:;<=>?@[\\]^_`{|}~…‥]/;
+    const RE_ONLY_PUNCT = /^[\s　。．、，、-〄〈-〠〰〽・！-／：-＠［-｀｛-･!"#$%&'()*+,\-./:;<=>?@[\\]^_`{|}~…‥]+$/;
+
+    function isPunctOnlyToken(str) {
+      const s = String(str || '').trim();
+      return !s || RE_ONLY_PUNCT.test(s);
+    }
     const RE_HAS_PARTICLE = /(?:から|まで|より|[はがをにでともへのねよか])/;
     const RE_ENDS_PARTICLE = /(?:から|まで|より|[はがをにでともへのねよか])$/;
 
@@ -1848,7 +1992,7 @@
       const chars = [...q];
       let i = 0;
       while (i < chars.length) {
-        if (RE_SEG_PUNCT.test(chars[i])) { i++; continue; }
+        if (RE_SEG_PUNCT.test(chars[i]) || /^[\s　]$/.test(chars[i])) { i++; continue; }
         let matchedLen = 0;
         const maxLen = Math.min(12, chars.length - i);
         for (let len = maxLen; len >= 1; len--) {
@@ -1874,24 +2018,25 @@
       if (!hasKana(q) && !hasHanzi(q)) return false;
 
       const idx = getSegIndex();
-      const len = [...q].length;
-      const hasPunct = RE_SEG_PUNCT.test(q);
-      const hasOrEndsParticle = RE_HAS_PARTICLE.test(q) || RE_ENDS_PARTICLE.test(q);
+      const len = nonSpaceLength(q);
+      const compactQ = q.replace(/[\s　]+/g, '');
+      const hasPunct = RE_SEG_PUNCT.test(compactQ);
+      const hasOrEndsParticle = RE_HAS_PARTICLE.test(compactQ) || RE_ENDS_PARTICLE.test(compactQ);
 
-      // 純漢字（無假名）且超過 6 字：僅在整串能被日文詞庫完整覆蓋時才走日文斷詞，避免誤切純中文長句
+      // 純漢字（無假名）且超過 6 字（不含空白）：僅在整串能被日文詞庫完整覆蓋時才走日文斷詞，避免誤切純中文長句
       if (!hasKana(q) && hasHanzi(q) && len > 6 && !hasPunct) {
-        return isFullyCoveredByJpLexicon(q, idx);
+        return isFullyCoveredByJpLexicon(compactQ, idx);
       }
 
       if (len <= 6 && !hasPunct) {
         if (!hasOrEndsParticle) return false;
-        const hira = toHiragana(q);
-        if (FORCE_SPLIT_PHRASES.has(q) || FORCE_SPLIT_PHRASES.has(hira)) return true;
-        if (SEG_WHOLE_WORDS.has(q) || SEG_WHOLE_WORDS.has(hira)) return false;
-        if (COPULA_TOKENS.has(q) || COPULA_TOKENS.has(hira)) return false;
-        if (idx.commonForms.has(q) || idx.commonForms.has(hira)) return false;
-        if (isSingleCommonInflection(q, idx)) return false;
-        if (hasHanzi(q) && idx.commonKanjiExact.has(q)) return false;
+        const hira = toHiragana(compactQ);
+        if (FORCE_SPLIT_PHRASES.has(compactQ) || FORCE_SPLIT_PHRASES.has(hira)) return true;
+        if (SEG_WHOLE_WORDS.has(compactQ) || SEG_WHOLE_WORDS.has(hira)) return false;
+        if (COPULA_TOKENS.has(compactQ) || COPULA_TOKENS.has(hira)) return false;
+        if (idx.commonForms.has(compactQ) || idx.commonForms.has(hira)) return false;
+        if (isSingleCommonInflection(compactQ, idx)) return false;
+        if (hasHanzi(compactQ) && idx.commonKanjiExact.has(compactQ)) return false;
         return true;
       }
 
@@ -1954,13 +2099,13 @@
       let i = 0;
 
       while (i < chars.length) {
-        if (RE_SEG_PUNCT.test(chars[i])) {
+        if (RE_SEG_PUNCT.test(chars[i]) || /^[\s　]$/.test(chars[i])) {
           i++;
           continue;
         }
 
         let spanEnd = i;
-        while (spanEnd < chars.length && !RE_SEG_PUNCT.test(chars[spanEnd])) spanEnd++;
+        while (spanEnd < chars.length && !RE_SEG_PUNCT.test(chars[spanEnd]) && !/^[\s　]$/.test(chars[spanEnd])) spanEnd++;
 
         let matched = null;
         const maxLen = Math.min(12, spanEnd - i);
@@ -2013,7 +2158,7 @@
         i = j;
       }
 
-      return tokens;
+      return tokens.filter(t => t && !isPunctOnlyToken(t.text));
     }
 
     // 針對單一斷詞精準檢索（只取精確命中與活用形還原，不混入前綴模糊搜尋）
@@ -2116,16 +2261,89 @@
         return { ...tok, tokenRes: res, bestEntry, inflection };
       });
       const exactFullMatches = tokens.length >= 2 ? findExactFullMatches(q) : [];
+      const hasAi = Boolean(getAiWorkerEndpoint());
       return {
         mode: 'jp',
         isSegmented: true,
         segViewMode: 'overview',
         activeSegmentIndex: -1,
         rawQuery: q,
+        localTokens: enriched,
         tokens: enriched,
         exactFullMatches,
-        results: enriched.map(t => t.bestEntry).filter(Boolean)
+        results: enriched.map(t => t.bestEntry).filter(Boolean),
+        aiState: hasAi ? 'idle' : 'unconfigured',
+        aiError: '',
+        useAiSegment: false,
+        aiData: null
       };
+    }
+
+    async function fetchAiSegmentation(q, token) {
+      if (!getAiWorkerEndpoint()) {
+        currentSearchOutput.aiState = 'error';
+        currentSearchOutput.aiError = '尚未設定 Cloudflare Worker 網址';
+        if (currentTab === 'search') renderCurrentView();
+        return;
+      }
+      try {
+        let aiRes = aiSegmentCache.get(q);
+        if (!aiRes) {
+          aiRes = await callAiWorker({ mode: 'segment', text: q }, 12000);
+          aiSegmentCache.set(q, aiRes);
+        }
+        if (token !== searchToken || !currentSearchOutput.isSegmented || currentSearchOutput.rawQuery !== q) return;
+
+        const mappedTokens = (aiRes.tokens || []).map(item => {
+          const surface = String(item.surface || '').trim();
+          const lemma = String(item.lemma || surface).trim();
+          const isParticle = Boolean(item.isParticle || item.pos === '助詞');
+          let tokenRes = searchSegmentToken({ text: lemma, isParticle });
+          if (tokenRes.results.length === 0 && surface !== lemma) {
+            tokenRes = searchSegmentToken({ text: surface, isParticle });
+          }
+          const bestEntry = tokenRes.results[0] || null;
+          const inflection = bestEntry && tokenRes.inflections ? tokenRes.inflections.get(bestEntry) || null : null;
+          return {
+            text: surface,
+            isParticle,
+            tokenRes,
+            bestEntry,
+            inflection,
+            aiMeta: {
+              lemma,
+              reading: String(item.reading || '').trim(),
+              pos: String(item.pos || '').trim(),
+              meaning: String(item.meaning || '').trim()
+            }
+          };
+        }).filter(t => t.text && !isPunctOnlyToken(t.text));
+
+        if (mappedTokens.length > 0 || aiRes.translation) {
+          currentSearchOutput.aiData = {
+            translation: aiRes.translation || '',
+            reading: aiRes.reading || '',
+            tokens: mappedTokens.length > 0 ? mappedTokens : currentSearchOutput.localTokens
+          };
+          currentSearchOutput.aiState = 'ready';
+          currentSearchOutput.aiError = '';
+          currentSearchOutput.useAiSegment = true;
+          currentSearchOutput.tokens = currentSearchOutput.aiData.tokens;
+          if (currentSearchOutput.segViewMode === 'overview') {
+            resultCountEl.textContent = currentSearchOutput.tokens.length;
+          }
+          if (currentTab === 'search') renderCurrentView();
+        } else {
+          currentSearchOutput.aiState = 'error';
+          currentSearchOutput.aiError = 'AI 回傳內容為空';
+          if (currentTab === 'search') renderCurrentView();
+        }
+      } catch (e) {
+        if (token !== searchToken) return;
+        currentSearchOutput.aiState = 'error';
+        currentSearchOutput.aiError = (e && e.message) ? e.message : '連線失敗';
+        if (currentTab === 'search') renderCurrentView();
+      }
     }
 
     function primaryPosText(entry, isParticle) {
@@ -2153,47 +2371,129 @@
       return '';
     }
 
-    // 渲染「逐詞對照一覽」極簡卡片列表 ＋ 底部同音詞補充連結
+    // 渲染「逐詞對照一覽」極簡卡片列表 ＋ 置頂整句 AI 翻譯卡 ＋ 底部同音詞補充連結
     function renderSegmentOverview(out) {
       const wrap = document.createElement('div');
+      const isAiActive = Boolean(out.useAiSegment && out.aiData);
+
+      // 置頂整句 AI 翻譯卡
+      if (isAiActive && (out.aiData.translation || out.aiData.reading)) {
+        const aiCard = document.createElement('article');
+        aiCard.className = 'ai-sentence-card';
+        aiCard.innerHTML = `
+          <div class="ai-sentence-head">
+            <span class="ai-sentence-badge">✨ 整句 AI 翻譯 · Gemini</span>
+            <div class="ai-sentence-actions">
+              <button type="button" class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(out.rawQuery)}">${SPEAKER_SVG}</button>
+              <button type="button" class="ai-copy-btn" title="一鍵複製翻譯">複製翻譯</button>
+            </div>
+          </div>
+          ${out.aiData.reading ? `<div class="ai-sentence-reading">${escapeHtml(out.aiData.reading)}</div>` : ''}
+          ${out.aiData.translation ? `<div class="ai-sentence-zh">${escapeHtml(out.aiData.translation)}</div>` : ''}
+        `;
+        aiCard.querySelector('[data-speak]').addEventListener('click', () => speakJapanese(out.rawQuery));
+        const copyBtn = aiCard.querySelector('.ai-copy-btn');
+        copyBtn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(out.aiData.translation || '');
+            copyBtn.textContent = '已複製 ✓';
+            setTimeout(() => { copyBtn.textContent = '複製翻譯'; }, 1500);
+          } catch (e) {}
+        });
+        wrap.appendChild(aiCard);
+      }
+
       const list = document.createElement('div');
       list.className = 'word-list seg-overview-list';
 
       out.tokens.forEach(tok => {
         const entry = tok.bestEntry;
+        const aiMeta = isAiActive ? tok.aiMeta : null;
         const card = document.createElement('article');
 
         if (!entry) {
-          card.className = 'word-card seg-overview-card';
+          const titleWord = (aiMeta && aiMeta.lemma) || tok.text;
+          const readingText = (aiMeta && aiMeta.reading && aiMeta.reading !== titleWord) ? aiMeta.reading : '';
+          const cachedSegTr = aiSegmentTokenCache.get(tok.text);
+          const posTag = (aiMeta && aiMeta.pos) || (cachedSegTr ? cachedSegTr.engine : '片段');
+          const glossText = (aiMeta && aiMeta.meaning) || (cachedSegTr ? cachedSegTr.text : '');
+          const surfaceNote = (aiMeta && aiMeta.lemma && aiMeta.lemma !== tok.text)
+            ? `<span class="seg-card-surface">（原句：${escapeHtml(tok.text)}）</span>`
+            : '';
+
+          card.className = 'word-card seg-overview-card' + (tok.isParticle ? ' is-particle' : '');
           card.innerHTML = `
             <div class="seg-card-main">
+              ${readingText ? `<div class="seg-card-reading">${escapeHtml(readingText)}</div>` : ''}
               <div class="seg-card-title">
-                <span>${escapeHtml(tok.text)}</span>
-                <span class="pos-tag">未收錄</span>
+                <span>${escapeHtml(titleWord)}</span>
+                <span class="pos-tag">${escapeHtml(posTag)}</span>
+                ${surfaceNote}
               </div>
-              <div class="seg-card-gloss">詞庫未收錄此片段</div>
+              ${glossText
+                ? `<div class="seg-card-gloss${tok.isParticle ? ' is-grammar' : ''}">${escapeHtml(glossText)}</div>`
+                : `<div class="card-gloss-fallback"><span class="seg-tr-status">翻譯中…</span><button type="button" class="fill-zh-btn" data-seg-tr="1" style="display:none;">✨ 翻譯</button></div>`}
             </div>
             <div class="card-actions">
-              <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(tok.text)}">${SPEAKER_SVG}</button>
+              <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(titleWord)}">${COPY_SVG}</button>
+              <button class="icon-btn speak-btn" type="button" title="日語發音" data-speak="${escapeHtml(readingText || titleWord)}">${SPEAKER_SVG}</button>
             </div>
           `;
           card.querySelector('[data-speak]').addEventListener('click', (e) => {
             speakJapanese(e.currentTarget.getAttribute('data-speak'));
           });
+
+          if (!glossText) {
+            const statusEl = card.querySelector('.seg-tr-status');
+            const retryBtn = card.querySelector('[data-seg-tr]');
+            const runTokenTranslate = async () => {
+              if (statusEl) statusEl.textContent = '翻譯中…';
+              if (retryBtn) retryBtn.style.display = 'none';
+              try {
+                const tr = await translateText(tok.text, 'ja', 'zh-TW');
+                if (tr && tr.text) {
+                  aiSegmentTokenCache.set(tok.text, tr);
+                  if (currentTab === 'search') renderCurrentView();
+                  return;
+                }
+              } catch (err) {}
+              if (statusEl) statusEl.textContent = '離線中';
+              if (retryBtn) retryBtn.style.display = 'inline-flex';
+            };
+            if (retryBtn) {
+              retryBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                runTokenTranslate();
+              });
+            }
+            if (!tok._autoTrStarted) {
+              tok._autoTrStarted = true;
+              runTokenTranslate();
+            } else if (statusEl && retryBtn) {
+              statusEl.textContent = '離線中';
+              retryBtn.style.display = 'inline-flex';
+            }
+          }
+
           list.appendChild(card);
           return;
         }
 
         const [kanjis, kanas] = entry;
-        const primaryWord = kanjis.length > 0 ? kanjis[0] : kanas[0];
-        const primaryReading = toHiragana(kanas[0] || '');
-        const showReading = kanjis.length > 0 && primaryReading && primaryReading !== primaryWord;
-        const posText = primaryPosText(entry, tok.isParticle);
-        const meaningText = primaryMeaningText(entry, tok.text, tok.isParticle);
+        const dictWord = kanjis.length > 0 ? kanjis[0] : kanas[0];
+        const dictReading = toHiragana(kanas[0] || '');
+        const primaryWord = (aiMeta && aiMeta.lemma) || dictWord;
+        const primaryReading = (aiMeta && aiMeta.reading) || dictReading;
+        const showReading = primaryReading && primaryReading !== primaryWord;
+        const posText = (aiMeta && aiMeta.pos) || primaryPosText(entry, tok.isParticle);
+        const meaningText = (aiMeta && aiMeta.meaning) || primaryMeaningText(entry, tok.text, tok.isParticle);
         const fav = isFavorite(entry);
         const inf = tok.inflection;
-        const surfaceBadge = inf && inf.surface !== primaryWord
-          ? `<span class="seg-card-surface">（原句：${escapeHtml(inf.surface)}）</span>`
+        const surfaceForm = (aiMeta && aiMeta.lemma && aiMeta.lemma !== tok.text)
+          ? tok.text
+          : (inf && inf.surface !== primaryWord ? inf.surface : '');
+        const surfaceBadge = surfaceForm
+          ? `<span class="seg-card-surface">（原句：${escapeHtml(surfaceForm)}）</span>`
           : '';
 
         card.className = 'word-card seg-overview-card clickable' + (tok.isParticle ? ' is-particle' : '');
@@ -2208,8 +2508,9 @@
             ${meaningText ? `<div class="seg-card-gloss${tok.isParticle ? ' is-grammar' : ''}">${escapeHtml(meaningText)}</div>` : ''}
           </div>
           <div class="card-actions">
-            <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
-            <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" title="${fav ? '取消收藏' : '加入收藏'}">
+            <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
+            <button class="icon-btn speak-btn" type="button" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
+            <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" type="button" title="${fav ? '取消收藏' : '加入收藏'}">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
             </button>
           </div>
@@ -2305,6 +2606,58 @@
         });
         segmentBar.appendChild(btn);
       });
+
+      if (out.aiState && out.aiState !== 'off') {
+        const aiBtn = document.createElement('button');
+        aiBtn.type = 'button';
+        const isAiOn = Boolean(out.useAiSegment && out.aiData);
+        const isErr = out.aiState === 'error' || out.aiState === 'unconfigured';
+        aiBtn.className = 'seg-ai-toggle'
+          + (isAiOn ? ' is-active' : '')
+          + (out.aiState === 'loading' ? ' is-loading' : '')
+          + (isErr && !isAiOn ? ' is-error' : '');
+
+        if (out.aiState === 'loading') {
+          aiBtn.textContent = '✨ AI 拆句中…';
+          aiBtn.disabled = true;
+        } else if (isAiOn) {
+          aiBtn.textContent = '✨ AI 拆句 ✓';
+          aiBtn.title = '目前為 Gemini AI 語意拆解，點擊切換回純本地規則斷詞';
+        } else if (out.aiState === 'unconfigured') {
+          aiBtn.textContent = '✨ AI 拆句（未設定）';
+          aiBtn.title = '請先於 assets/firebase-config.js 填入 Cloudflare Worker 網址';
+        } else if (out.aiState === 'error') {
+          aiBtn.textContent = '✨ AI 拆句（重試）';
+          aiBtn.title = out.aiError ? `AI 連線失敗：${out.aiError}（點擊重試）` : '點擊重新嘗試 Gemini AI 拆句';
+        } else {
+          aiBtn.textContent = out.aiData ? '✨ 切回 AI 拆句' : '✨ AI 拆句';
+          aiBtn.title = out.aiData
+            ? '目前為本地規則斷詞，點擊切回 Gemini AI 語意拆解'
+            : '點擊啟用 Gemini AI 語意拆解與整句翻譯';
+        }
+
+        aiBtn.addEventListener('click', () => {
+          if (out.aiState === 'loading') return;
+          if (!getAiWorkerEndpoint()) {
+            alert('尚未設定 Cloudflare Worker 網址！\n\n請部署 worker.js 後，將網址填入 assets/firebase-config.js 的 window.YUKIYOSEI_AI_SEGMENT_ENDPOINT。');
+            return;
+          }
+          if (!out.aiData) {
+            out.aiState = 'loading';
+            renderCurrentView();
+            fetchAiSegmentation(out.rawQuery, searchToken);
+            return;
+          }
+          closeDetail();
+          out.useAiSegment = !out.useAiSegment;
+          out.tokens = out.useAiSegment ? out.aiData.tokens : out.localTokens;
+          out.segViewMode = 'overview';
+          out.activeSegmentIndex = -1;
+          resultCountEl.textContent = out.tokens.length;
+          renderCurrentView();
+        });
+        segmentBar.appendChild(aiBtn);
+      }
 
       segmentBar.style.display = 'flex';
     }
@@ -2855,6 +3208,49 @@
     });
 
     const SPEAKER_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>';
+    const COPY_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    const CHECK_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+    async function copyCardText(text, btn) {
+      if (!text) return;
+      let ok = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          ok = true;
+        }
+      } catch (e) {}
+      if (!ok) {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+        } catch (e) {}
+      }
+      if (ok && btn) {
+        btn.classList.add('copy-done');
+        btn.innerHTML = CHECK_SVG;
+        btn.title = '已複製';
+        clearTimeout(btn._copyTimer);
+        btn._copyTimer = setTimeout(() => {
+          btn.classList.remove('copy-done');
+          btn.innerHTML = COPY_SVG;
+          btn.title = '複製單字';
+        }, 1400);
+      }
+    }
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-copy]');
+      if (!btn) return;
+      e.stopPropagation();
+      copyCardText(btn.getAttribute('data-copy'), btn);
+    });
 
     function renderDetailPage(entry, inf) {
       const [kanjis, kanas, isCommon, senses, zhs] = entry;
@@ -2930,8 +3326,9 @@
               </div>
             </div>
             <div class="card-actions">
-              <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
-              <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" id="detailFav" title="${fav ? '取消收藏' : '加入收藏'}">
+              <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
+              <button class="icon-btn speak-btn" type="button" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
+              <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" id="detailFav" type="button" title="${fav ? '取消收藏' : '加入收藏'}">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
               </button>
             </div>
@@ -3100,12 +3497,27 @@
           inflHtml = `<div class="infl-note"><strong>${escapeHtml(inf.surface)}</strong> 是 <strong>${escapeHtml(inf.base)}</strong> 的變化形　${escapeHtml(chain)}${escapeHtml(inflectionExtra(inf))}</div>`;
         }
 
+        const entryId = getEntryId(entry);
         const cleanZhs = (zhs || []).filter(z => !/[㐀-䶿]/.test(z));
+        const cachedAiZh = aiWordZhCache.get(entryId);
         let zhHtml = '';
         if (cleanZhs.length > 0) {
           zhHtml = `<div class="zh-meanings zh-compact">${cleanZhs.map(z => `<span class="zh-pill">${escapeHtml(z)}</span>`).join('')}</div>`;
+        } else if (cachedAiZh) {
+          const enSub = (senses && senses[0] && senses[0].g && senses[0].g.length > 0)
+            ? senses[0].g.slice(0, 2).join('; ')
+            : '';
+          zhHtml = `
+            <div class="zh-meanings zh-compact">
+              <span class="zh-pill">${escapeHtml(cachedAiZh)}</span>
+              ${enSub ? `<span class="ai-zh-sub-en">（${escapeHtml(enSub)}）</span>` : ''}
+            </div>`;
         } else if (senses && senses[0] && senses[0].g && senses[0].g.length > 0) {
-          zhHtml = `<div class="card-gloss-fallback">${escapeHtml(senses[0].g.slice(0, 3).join('; '))}</div>`;
+          zhHtml = `
+            <div class="card-gloss-fallback">
+              <span>${escapeHtml(senses[0].g.slice(0, 3).join('; '))}</span>
+              <button type="button" class="fill-zh-btn" data-fill-zh="1">✨ 補中文</button>
+            </div>`;
         }
 
         const hasBelow = Boolean(inflHtml || zhHtml);
@@ -3120,14 +3532,15 @@
               </div>
             </div>
             <div class="card-actions">
-              <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">
+              <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
+              <button class="icon-btn speak-btn" type="button" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                   <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
                   <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
                 </svg>
               </button>
-              <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" title="${fav ? '取消收藏' : '加入收藏'}">
+              <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" type="button" title="${fav ? '取消收藏' : '加入收藏'}">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                 </svg>
@@ -3142,6 +3555,27 @@
           if (e.target.closest('button')) return;
           openDetail(entry, inf || null);
         });
+
+        const fillZhBtn = card.querySelector('[data-fill-zh]');
+        if (fillZhBtn) {
+          fillZhBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (fillZhBtn.disabled) return;
+            fillZhBtn.disabled = true;
+            fillZhBtn.textContent = '翻譯中…';
+            const enSource = (senses[0].g || []).slice(0, 3).join('; ');
+            try {
+              const tr = await translateText(enSource, 'en', 'zh-TW', primaryWord);
+              if (tr && tr.text) {
+                aiWordZhCache.set(entryId, tr.text);
+                renderCurrentView();
+                return;
+              }
+            } catch (err) {}
+            fillZhBtn.disabled = false;
+            fillZhBtn.textContent = '✨ 補中文';
+          });
+        }
 
         card.querySelector('.fav-btn').addEventListener('click', () => toggleFavorite(entry));
         card.querySelectorAll('[data-speak]').forEach(btn => {
@@ -3167,6 +3601,10 @@
       resultCountEl.style.display = query.trim() ? '' : 'none';
 
       const q = query.trim();
+      if (isDbReady && q && currentSearchOutput.isSegmented && getAiWorkerEndpoint()) {
+        currentSearchOutput.aiState = 'loading';
+        fetchAiSegmentation(q, token);
+      }
       const needTranslate = isDbReady && q && !currentSearchOutput.isSegmented
         && currentSearchOutput.results.length === 0
         && currentSearchOutput.mode !== 'num' && currentSearchOutput.mode !== 'wild';
@@ -3502,10 +3940,11 @@
             <div class="daily-gloss">${escapeHtml(gloss)}</div>
           </div>
           <div class="card-actions">
-            <button class="icon-btn speak-btn" title="日語發音" data-speak="${escapeHtml(reading || word)}">
+            <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(word)}">${COPY_SVG}</button>
+            <button class="icon-btn speak-btn" type="button" title="日語發音" data-speak="${escapeHtml(reading || word)}">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
             </button>
-            <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" title="${fav ? '取消收藏' : '加入收藏'}">
+            <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" type="button" title="${fav ? '取消收藏' : '加入收藏'}">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
             </button>
           </div>
@@ -3571,10 +4010,22 @@
 
         if (out.isSegmented) {
           if (out.segViewMode === 'overview') {
+            const isAiOn = Boolean(out.useAiSegment && out.aiData);
+            let bannerDesc = `已斷詞為 ${out.tokens.length} 個詞彙（點擊卡片看詳細，點擊上方膠囊查同音詞）`;
+            let bannerTag = '<span class="mode-tag mode-jp">本地規則斷詞</span>';
+            if (out.aiState === 'loading') {
+              bannerDesc = `先顯示本地斷詞（${out.tokens.length} 詞），✨ Gemini AI 正在背景分析整句與詞義…`;
+              bannerTag = '<span class="mode-tag mode-ai">✨ AI 分析中…</span>';
+            } else if (isAiOn) {
+              bannerDesc = `已由 Gemini AI 依上下文拆解為 ${out.tokens.length} 個詞彙（點右上「✨ AI 拆句 ✓」可切回本地斷詞）`;
+              bannerTag = '<span class="mode-tag mode-ai">✨ AI 語意拆解</span>';
+            } else if (out.aiState === 'error' && out.aiError) {
+              bannerDesc = `目前顯示本地規則斷詞（AI 暫無法連線：${escapeHtml(out.aiError)}）`;
+            }
             strategyArea.innerHTML = `
               <div class="strategy-banner">
-                <span>已斷詞為 ${out.tokens.length} 個詞彙（點擊卡片看詳細，點擊上方斷詞膠囊查同音詞）</span>
-                <span class="mode-tag mode-jp">逐詞對照一覽</span>
+                <span>${bannerDesc}</span>
+                ${bannerTag}
               </div>
             `;
             mainContent.appendChild(renderSegmentOverview(out));
@@ -4037,76 +4488,7 @@
       dot.style.display = isDoneToday ? 'none' : '';
     }
 
-    // 繁簡中文常用字對照表（確保日漢釋義比對兼容繁體與簡體中文）
-    const TRAD_SIMP_PAIRS = [
-      '學学','習习','語语','詞词','辭辞','書书','讀读','寫写','聽听','說说','話话','請请','謝谢',
-      '車车','電电','駅站','站站','飛飞','機机','場场','船船','鐵铁','線线','路路','地圖地图',
-      '買买','賣卖','錢钱','銀银','價价','貴贵','便便','免費免费','割引折扣','現金现金','領収書收据',
-      '飲饮','食食','飯饭','麵面','湯汤','魚鱼','鳥鸟','肉肉','菜菜','菓果','茶茶','酒酒','燒烧','揚げ炸',
-      '壽司寿司','拉麵拉面','味噌湯味噌汤','丼盖饭','便當便当','點心点心','甜點甜点','好吃美味',
-      '雪雪','雲云','風风','雨雨','晴晴','陰阴','霧雾','雷雷','氣气','溫温','冷冷','熱热','暖暖','凍冻',
-      '溫泉温泉','風呂浴池','湯船浴缸','旅館旅馆','飯店饭店','房間房间','鑰匙钥匙','預約预约','行李行李',
-      '護照护照','簽證签证','觀光观光','旅遊旅游','風景风景','櫻花樱花','紅葉红叶','寺廟寺庙','繪馬绘马',
-      '運動运动','健身健身','肌肉肌肉','體力体力','體重体重','練習练习','考試考试','問題问题','答案答案',
-      '時間时间','時时','分分','秒秒','今天今日','明天明日','昨天昨日','星期周','週周','年年','月月','日日',
-      '電話电话','電腦电脑','網路网络','手機手机','相機相机','照片照片','音樂音乐','電影电影','電視电视',
-      '醫院医院','醫生医生','藥药','感冒感冒','發燒发烧','頭痛头痛','肚子腹','身體身体','眼睛眼','耳朵耳',
-      '頭髮头发','臉脸','手手','腳脚','心心','愛爱','喜歡喜欢','討厭讨厌','高興高兴','快樂快乐','難過难过',
-      '生氣生气','害怕害怕','擔心担心','安心安心','危險危险','安全安全','方便方便','麻煩麻烦','簡單简单',
-      '困難困难','重要重要','特別特别','普通普通','一樣一样','不同不同','開始开始','結束结束','繼續继续',
-      '準備准备','決定决定','選擇选择','幫助帮助','幫忙帮忙','照顧照顾','介紹介绍','說明说明','確認确认',
-      '發現发现','發明发明','變化变化','發展发展','經驗经验','知識知识','文化文化','傳統传统','歷史历史',
-      '經濟经济','政治政治','社會社会','環境环境','自然自然','動物动物','植物植物','花花','草草','樹树',
-      '山山','川川','海海','河河','湖湖','島岛','國国','都市城市','鄉下乡下','公園公园','圖書館图书馆',
-      '銀行银行','郵局邮局','警察警察','學校学校','老師老师','學生学生','同學同学','朋友朋友','家人家人',
-      '父親父亲','母親母亲','哥哥兄','姊姊姐','弟弟弟','妹妹妹','丈夫丈夫','妻子妻子','孩子小孩','寶寶宝宝',
-      '男男','女女','大人大人','老人老人','年輕年轻','漂亮美丽','帥氣帅气','可愛可爱','溫柔温柔','親切亲切',
-      '認真认真','努力努力','聰明聪明','厲害厉害','糟糕糟糕','奇怪奇怪','安靜安静','熱鬧热闹','乾淨干净',
-      '髒脏','新新','舊旧','長长','短短','高高','矮矮','胖胖','瘦瘦','強强','弱弱','快快','慢慢','早早','晚晚',
-      '多多少','少少','大大小','小小','遠远','近近','左左','右右','前前','後后','裡里','外外','上上','下下',
-      '紅红','藍蓝','綠绿','黃黄','白白','黑黑','灰灰','粉紅粉红','紫色紫色','金色金色','銀色银色',
-      '門门','窗窗','桌子桌','椅子椅','床床','燈灯','鏡子镜子','傘伞','衣服衣','褲子裤子','鞋子鞋','帽子帽',
-      '眼鏡眼镜','手錶手表','包包包','錢包钱包','毛巾毛巾','肥皂肥皂','牙刷牙刷','衛生紙卫生纸','垃圾垃圾',
-      '開开','關关','進进','出出','來来','去去','回回','走走','跑跑','跳跳','站站','坐坐','睡睡','醒醒',
-      '看观','見见','聞闻','嚐尝','摸摸','拿取','放放','給给','收收','借借','還还','送送','接接','找寻',
-      '忘忘','記记','想思','知道知','懂理解','會能','做作','工作工作','休息休息','玩玩','唱唱','畫画'
-    ];
 
-    const TRAD_TO_SIMP_MAP = (() => {
-      const m = new Map();
-      TRAD_SIMP_PAIRS.forEach(pair => {
-        if (pair.length === 2) {
-          m.set(pair[0], pair[1]);
-        } else if (pair.length % 2 === 0) {
-          const half = pair.length / 2;
-          for (let i = 0; i < half; i++) {
-            m.set(pair[i], pair[i + half]);
-          }
-        }
-      });
-      return m;
-    })();
-
-    function normalizeChineseForCompare(str) {
-      const cleaned = String(str || '')
-        .toLowerCase()
-        .replace(/[\s　・･·\-—_~〜～!！?？。．.「」『』【】《》〈〉"'’“”]/g, '');
-      let out = '';
-      for (const ch of cleaned) {
-        out += TRAD_TO_SIMP_MAP.get(ch) || ch;
-      }
-      return out;
-    }
-
-    function stripParens(str) {
-      let prev = String(str || '');
-      let next = prev.replace(/（[^（）]*）|\([^()]*\)/g, '');
-      while (next !== prev) {
-        prev = next;
-        next = prev.replace(/（[^（）]*）|\([^()]*\)/g, '');
-      }
-      return next;
-    }
 
     // 日翻中容錯比對：濾除括號補充說明，依分號／頓號拆解，兼容繁簡中文與同義橋接
     function checkJp2ZhAnswer(userInput, entry) {
@@ -4269,6 +4651,7 @@
               </div>
             </div>
             <div class="card-actions">
+              <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(primaryWord)}">${COPY_SVG}</button>
               <button class="icon-btn speak-btn" type="button" title="日語發音" data-speak="${escapeHtml(primaryReading || primaryWord)}">${SPEAKER_SVG}</button>
               <button class="icon-btn fav-btn ${fav ? 'fav-active' : ''}" type="button" title="${fav ? '取消收藏' : '加入收藏'}">
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
@@ -4306,6 +4689,18 @@
     // ===== 每日小考獨立畫面渲染（跳出不存進度，重開從第 1 題開始）=====
     let activeQuizState = null;
 
+    function exitDailyQuiz() {
+      if (activeQuizState && !activeQuizState.completed && Array.isArray(activeQuizState.questions)) {
+        const hasAnswered = activeQuizState.questions.some(q => q.status !== 'pending');
+        if (hasAnswered) {
+          const ok = confirm('確定要放棄本次測驗嗎？目前作答進度將不會保留，下次進入會從第 1 題重新開始。');
+          if (!ok) return;
+        }
+      }
+      activeQuizState = null;
+      goHomeSearch();
+    }
+
     function renderDailyQuizPage() {
       const wrap = document.createElement('section');
       wrap.className = 'quiz-view';
@@ -4324,12 +4719,16 @@
         wrap.innerHTML = `
           <div class="quiz-topbar">
             <h2 class="quiz-view-title">每日小考</h2>
+            <div class="quiz-topbar-right">
+              <button class="quiz-close-btn" id="quizExitBtn" type="button" title="離開測驗" aria-label="離開測驗">✕</button>
+            </div>
           </div>
           <div class="empty-state">
             <strong>目前尚無可出題的單字</strong>
             <p>先搜尋或收藏幾個單字後，再來挑戰每日小考吧！</p>
           </div>
         `;
+        wrap.querySelector('#quizExitBtn').addEventListener('click', exitDailyQuiz);
         return wrap;
       }
 
@@ -4466,7 +4865,10 @@
       wrap.innerHTML = `
         <div class="quiz-topbar">
           <h2 class="quiz-view-title">每日小考</h2>
-          <span class="quiz-progress-text">${idx + 1} / ${total}</span>
+          <div class="quiz-topbar-right">
+            <span class="quiz-progress-text">${idx + 1} / ${total}</span>
+            <button class="quiz-close-btn" id="quizExitBtn" type="button" title="離開測驗" aria-label="離開測驗">✕</button>
+          </div>
         </div>
         <div class="quiz-progress-track" aria-hidden="true">
           <div class="quiz-progress-fill" style="width: ${progressPct}%;"></div>
@@ -4477,6 +4879,9 @@
           ${bodyHtml}
         </article>
       `;
+
+      const exitBtn = wrap.querySelector('#quizExitBtn');
+      if (exitBtn) exitBtn.addEventListener('click', exitDailyQuiz);
 
       wrap.querySelectorAll('[data-speak]').forEach(btn => {
         btn.addEventListener('click', () => speakJapanese(btn.getAttribute('data-speak')));

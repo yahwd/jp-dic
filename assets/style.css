@@ -1536,3 +1536,254 @@
       color: var(--fav-active);
       background: #FDF2F2;
     }
+
+
+    /* ===== AI 拆句切換按鈕（斷詞膠囊列最右側） ===== */
+    .segment-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      min-width: 0;
+    }
+
+    .seg-ai-toggle {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid #D8B4FE;
+      background: #F5F3FF;
+      color: #6D28D9;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .seg-ai-toggle:hover:not(:disabled) {
+      background: #EDE9FE;
+      border-color: #C084FC;
+    }
+
+    .seg-ai-toggle.is-active {
+      background: linear-gradient(135deg, #6D28D9 0%, #4F46E5 100%);
+      color: #FFFFFF;
+      border-color: transparent;
+      box-shadow: 0 2px 6px rgba(109, 40, 217, 0.25);
+    }
+
+    .seg-ai-toggle.is-loading {
+      opacity: 0.75;
+      cursor: wait;
+    }
+
+    /* ===== 置頂整句 AI 翻譯卡 ===== */
+    .ai-sentence-card {
+      background: linear-gradient(180deg, #FAF8FF 0%, #FFFFFF 100%);
+      border: 1px solid #DDD6FE;
+      border-left: 3.5px solid #7C3AED;
+      border-radius: var(--radius);
+      padding: 13px 15px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow-sm);
+      min-width: 0;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .ai-sentence-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+      min-width: 0;
+    }
+
+    .ai-sentence-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #6D28D9;
+      background: #EDE9FE;
+      padding: 2px 9px;
+      border-radius: 999px;
+    }
+
+    .ai-sentence-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .ai-copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .ai-copy-btn:hover {
+      border-color: #7C3AED;
+      color: #6D28D9;
+      background: #F5F3FF;
+    }
+
+    .ai-sentence-reading {
+      font-size: 0.84rem;
+      color: #6D28D9;
+      margin-bottom: 4px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .ai-sentence-zh {
+      font-size: 1.02rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    /* ===== 單字卡「補中文」按鈕與防跑版修正 ===== */
+    .word-card,
+    .seg-card-main,
+    .word-title-group,
+    .card-gloss-fallback {
+      min-width: 0;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .card-gloss-fallback {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .fill-zh-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid #D8B4FE;
+      background: #F5F3FF;
+      color: #6D28D9;
+      font-size: 0.74rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+
+    .fill-zh-btn:hover:not(:disabled) {
+      background: #EDE9FE;
+      border-color: #A855F7;
+    }
+
+    .fill-zh-btn:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    .ai-zh-sub-en {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-left: 4px;
+      word-break: break-word;
+    }
+
+    @media (max-width: 480px) {
+      .seg-ai-toggle {
+        font-size: 0.74rem;
+        padding: 3px 9px;
+      }
+      .ai-sentence-card {
+        padding: 11px 12px;
+      }
+    }
+
+
+    /* ===== 單字卡複製圖示按鈕 ===== */
+    .icon-btn.copy-btn.copy-done {
+      color: #2E7D5B;
+      border-color: #B7E4CE;
+      background: #EDF9F3;
+    }
+
+    @media (max-width: 400px) {
+      .card-actions {
+        gap: 6px;
+      }
+      .card-actions .icon-btn {
+        width: 32px;
+        height: 32px;
+      }
+    }
+
+
+    /* ===== AI 模式標籤與每日小考右上角關閉圖示 ===== */
+    .mode-tag.mode-ai {
+      background: #EDE9FE;
+      color: #6D28D9;
+      border: 1px solid #DDD6FE;
+    }
+
+    .seg-ai-toggle.is-error {
+      border-color: #FCD34D;
+      background: #FFFBEB;
+      color: #B45309;
+    }
+
+    .quiz-topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .quiz-close-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
+    }
+
+    .quiz-close-btn:hover {
+      border-color: #F5C6C5;
+      color: var(--fav-active);
+      background: #FDF2F2;
+    }
