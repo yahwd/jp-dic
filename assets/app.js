@@ -987,11 +987,11 @@ let dictData = [];
       return ep;
     }
 
-    async function callAiWorker(payload, timeoutMs = 20000) {
+    async function callAiWorker(payload, timeoutMs = 45000) {
       const endpoint = getAiWorkerEndpoint();
       if (!endpoint) throw new Error('AI endpoint not configured');
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const timer = setTimeout(() => ctrl.abort(new Error('AI 回應逾時（超過 45 秒），請點擊重試')), timeoutMs);
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -1003,6 +1003,11 @@ let dictData = [];
         const data = await res.json();
         if (!data || !data.ok) throw new Error((data && data.error) || 'Worker invalid response');
         return data;
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          throw new Error('AI 回應逾時，請點擊重試');
+        }
+        throw err;
       } finally {
         clearTimeout(timer);
       }
@@ -2371,7 +2376,7 @@ let dictData = [];
         const cacheKey = `v4:${q}`;
         let aiRes = aiSegmentCache.get(cacheKey);
         if (!aiRes) {
-          aiRes = await callAiWorker({ mode: 'segment', text: q }, 20000);
+          aiRes = await callAiWorker({ mode: 'segment', text: q }, 45000);
           aiSegmentCache.set(cacheKey, aiRes);
         }
         if (token !== searchToken || !currentSearchOutput.isSegmented || currentSearchOutput.rawQuery !== q) return;
