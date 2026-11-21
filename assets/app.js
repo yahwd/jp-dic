@@ -335,6 +335,8 @@ let dictData = [];
       }));
       const dailyQuizRec = safeReadJson(STORAGE_KEYS.dailyQuiz, null);
       return {
+        email: (currentCloudUser && currentCloudUser.email) || '',
+        displayName: (currentCloudUser && currentCloudUser.displayName) || '',
         updatedAt: Date.now(),
         favorites: {
           version: 2,
