@@ -1798,3 +1798,208 @@
       color: var(--fav-active);
       background: #FDF2F2;
     }
+
+    /* ===== 詳細頁：相似詞與反義詞 ===== */
+    .syn-ant-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .syn-ant-label {
+      margin-bottom: 6px;
+    }
+
+    .syn-ant-list {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px 16px;
+    }
+
+    .syn-ant-link {
+      all: unset;
+      cursor: pointer;
+      font-size: 0.96rem;
+      line-height: 1.15;
+      padding: 0 1px 1px;
+      color: var(--text-primary);
+      font-weight: 500;
+      border-bottom: 1.5px solid transparent;
+      transition: opacity 0.15s ease;
+    }
+
+    .syn-ant-link.is-syn {
+      border-bottom-color: #4A89A8;
+    }
+
+    .syn-ant-link.is-ant {
+      border-bottom-color: #C27D6A;
+    }
+
+    .syn-ant-link:hover {
+      opacity: 0.72;
+    }
+
+    /* ===== 長句拆解：文法解析與自他動詞對照 ===== */
+    .grammar-notes-section,
+    .verb-pairs-section {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .grammar-note-card {
+      border-left: 3.5px solid #4A89A8;
+    }
+
+    .grammar-note-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+
+    .grammar-pattern {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif;
+    }
+
+    .grammar-structure {
+      font-size: 0.84rem;
+      color: var(--accent);
+      font-weight: 500;
+      margin-bottom: 4px;
+      font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif;
+    }
+
+    .grammar-example {
+      margin-top: 8px;
+      font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif;
+      line-height: 1.55;
+    }
+
+    .verb-pair-card {
+      border-left: 3.5px solid #C27D6A;
+    }
+
+    .verb-pair-title {
+      font-size: 0.96rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif;
+    }
+
+    .ai-context-note {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border);
+      font-size: 0.83rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .verb-pair-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .verb-pair-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+      font-family: 'Noto Sans JP', 'Noto Sans TC', sans-serif;
+      text-align: left;
+    }
+
+    .verb-pair-table th {
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 4px 8px 6px 0;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .verb-pair-table td {
+      padding: 8px 10px 8px 0;
+      border-bottom: 1px solid var(--surface-subtle);
+      vertical-align: top;
+      line-height: 1.45;
+      color: var(--text-secondary);
+    }
+
+    .verb-pair-table tr:last-child td {
+      border-bottom: none;
+      padding-bottom: 2px;
+    }
+
+    .vp-col-word {
+      font-weight: 700;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .vp-col-pos {
+      white-space: nowrap;
+    }
+
+    .vp-col-pos .pos-tag {
+      margin-right: 0;
+    }
+
+    .vp-col-meaning {
+      min-width: 5.5em;
+    }
+
+    .vp-col-ex {
+      min-width: 12em;
+    }
+
+    /* ===== 長句模式：頂部動態區塊標題與寬螢幕展開跳轉列 ===== */
+    .seg-section-nav {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .seg-nav-item {
+      background: transparent;
+      border: none;
+      padding: 7px 11px;
+      border-radius: 0;
+      font-size: 0.9rem;
+      font-weight: 500;
+      font-family: inherit;
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .seg-nav-item:hover {
+      color: var(--text-primary);
+    }
+
+    .seg-nav-item.active {
+      color: var(--accent);
+      font-weight: 600;
+      box-shadow: inset 0 -2px 0 var(--accent);
+    }
+
+    /* 空間足夠時（>= 640px）展開顯示所有現有區塊；窄螢幕隱藏展開列，由主分頁按鈕動態切換標題 */
+    @media (min-width: 640px) {
+      .tabs.is-seg-expanded .tab-btn[data-tab="search"] {
+        display: none;
+      }
+      .tabs.is-seg-expanded .seg-section-nav {
+        display: inline-flex;
+      }
+    }

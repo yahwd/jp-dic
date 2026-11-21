@@ -55,7 +55,7 @@ let dictData = [];
     function normalizeChineseForCompare(str) {
       const cleaned = String(str || '')
         .toLowerCase()
-        .replace(/[\s　・･·\-—_~〜～!！?？。．.「」『』【】《》〈〉"'’“”]/g, '');
+        .replace(/[\s ・･·\-—_~〜～!！?？。．.「」『』【】《》〈〉"'’“”]/g, '');
       let out = '';
       for (const ch of cleaned) {
         out += TRAD_TO_SIMP_MAP.get(ch) || ch;
@@ -709,7 +709,7 @@ let dictData = [];
     const histCountEl = document.getElementById('histCount');
 
     // 版本號需與 sw.js 的 CACHE_NAME 相同；更換 data 檔案後兩邊一起加 1
-    const CACHE_NAME = 'yukiyosei-v26';
+    const CACHE_NAME = 'yukiyosei-v27';
 
     function formatMB(bytes) {
       return (bytes / 1048576).toFixed(1) + ' MB';
@@ -985,7 +985,7 @@ let dictData = [];
       return ep;
     }
 
-    async function callAiWorker(payload, timeoutMs = 10000) {
+    async function callAiWorker(payload, timeoutMs = 20000) {
       const endpoint = getAiWorkerEndpoint();
       if (!endpoint) throw new Error('AI endpoint not configured');
       const ctrl = new AbortController();
@@ -1034,37 +1034,37 @@ let dictData = [];
     }
 
     async function translateText(text, from, to, wordHint = '', preferAi = false) {
-  const key = `${preferAi ? 'ai' : 'free'}|${from}|${to}|${wordHint}|${text}`;
-  if (translateCache.has(key)) return translateCache.get(key);
+      const key = `${preferAi ? 'ai' : 'free'}|${from}|${to}|${wordHint}|${text}`;
+      if (translateCache.has(key)) return translateCache.get(key);
 
-  // 1. 只有明確要求 preferAi（例如整句模式或手動按「✨ AI 精修」）才優先走 Gemini Worker
-  if (preferAi && getAiWorkerEndpoint()) {
-    try {
-      const aiRes = await callAiWorker({ mode: 'translate', text, from, to, word: wordHint }, 9500);
-      if (aiRes.translation) {
-        const result = {
-          text: aiRes.translation,
-          reading: aiRes.reading || '',
-          engine: 'Gemini AI'
-        };
-        translateCache.set(key, result);
-        return result;
+      // 1. 只有明確要求 preferAi（例如整句模式或手動按「✨ AI 精修」）才優先走 Gemini Worker
+      if (preferAi && getAiWorkerEndpoint()) {
+        try {
+          const aiRes = await callAiWorker({ mode: 'translate', text, from, to, word: wordHint }, 20000);
+          if (aiRes.translation) {
+            const result = {
+              text: aiRes.translation,
+              reading: aiRes.reading || '',
+              engine: 'Gemini AI'
+            };
+            translateCache.set(key, result);
+            return result;
+          }
+        } catch (e) {
+          // AI 失敗時自動往下退回免費翻譯
+        }
       }
-    } catch (e) {
-      // AI 失敗時自動往下退回免費翻譯
-    }
-  }
 
-  // 2. 一般單字自動補中文預設走免費 Google 翻譯（zh-TW）
-  let result;
-  try {
-    result = { text: await translateViaGoogle(text, from, to), engine: 'Google 翻譯' };
-  } catch (e1) {
-    result = { text: await translateViaMyMemory(text, from, to), engine: 'MyMemory' };
-  }
-  translateCache.set(key, result);
-  return result;
-}
+      // 2. 一般單字自動補中文預設走免費 Google 翻譯（zh-TW）
+      let result;
+      try {
+        result = { text: await translateViaGoogle(text, from, to), engine: 'Google 翻譯' };
+      } catch (e1) {
+        result = { text: await translateViaMyMemory(text, from, to), engine: 'MyMemory' };
+      }
+      translateCache.set(key, result);
+      return result;
+    }
 
     const LANG_LABEL = { 'ja': '日文', 'en': '英文', 'zh-TW': '中文' };
 
@@ -1118,6 +1118,67 @@ let dictData = [];
         }
         if (currentTab === 'search') renderCurrentView();
       }, 450);
+    }
+
+    function isChineseSentenceQuery(q) {
+      const s = String(q || '').trim();
+      if (!s || hasKana(s) || !hasHanzi(s)) return false;
+      if (/[；;、／/，,｜|]/.test(s)) return false;
+      const hanziCount = (s.match(/[\u4E00-\u9FFF]/g) || []).length;
+      return hanziCount >= 5 || (hanziCount >= 2 && RE_SEG_PUNCT.test(s));
+    }
+
+    function buildZhSentenceSegmentedOutput(zhQuery, jpSentence, jpReading = '', engine = 'Gemini AI') {
+      const cleanJp = String(jpSentence || '').trim();
+      const tokens = cleanJp ? segmentJapaneseText(cleanJp) : [];
+      const baseOverview = buildSegmentedOverview(cleanJp || zhQuery, tokens);
+      return {
+        ...baseOverview,
+        isZhSentenceToJp: true,
+        zhQuery,
+        jpSentence: cleanJp,
+        sentenceTr: {
+          state: 'done',
+          text: cleanJp,
+          reading: jpReading || '',
+          engine
+        }
+      };
+    }
+
+    async function translateZhSentenceToJpCards(zhQuery, token) {
+      let jpText = '';
+      let jpReading = '';
+      let engine = 'Google 翻譯';
+
+      if (getAiWorkerEndpoint()) {
+        try {
+          const aiRes = await callAiWorker({ mode: 'translate', text: zhQuery, from: 'zh-TW', to: 'ja' }, 10000);
+          if (aiRes && aiRes.translation) {
+            jpText = String(aiRes.translation).trim();
+            jpReading = String(aiRes.reading || '').trim();
+            engine = 'Gemini AI';
+          }
+        } catch (e) {}
+      }
+
+      if (!jpText) {
+        const freeRes = await translateText(zhQuery, 'zh-TW', 'ja', '', false);
+        jpText = (freeRes && freeRes.text) ? String(freeRes.text).trim() : '';
+        engine = (freeRes && freeRes.engine) || 'Google 翻譯';
+      }
+
+      if (token !== searchToken) return;
+      if (!jpText) {
+        currentSearchOutput.zhSentenceLoading = false;
+        currentSearchOutput.translate = { state: 'error', query: zhQuery };
+        if (currentTab === 'search') renderCurrentView();
+        return;
+      }
+
+      currentSearchOutput = buildZhSentenceSegmentedOutput(zhQuery, jpText, jpReading, engine);
+      resultCountEl.textContent = currentSearchOutput.tokens.length;
+      if (currentTab === 'search') renderCurrentView();
     }
 
     function renderNumberCard(info) {
@@ -1921,14 +1982,14 @@ let dictData = [];
       'びょういん', '病院', 'ぎんこう', '銀行', 'としょかん', '図書館', 'こうえん', '公園'
     ]);
 
-    // 計算不含半形空白（ ）與全形空白（　）的字數
+    // 計算不含半形空白（ ）與全形空白（ ）的字數
     function nonSpaceLength(str) {
-      return [...String(str || '').replace(/[\s　]+/g, '')].length;
+      return [...String(str || '').replace(/[\s ]+/g, '')].length;
     }
 
     const RE_SEG_PUNCT = /[\p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]/u;
-    const RE_ONLY_PUNCT = /^[\s　\p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+$/u;
-    const RE_EDGE_PUNCT = /^[\s　\p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+|[\s　\p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+$/gu;
+    const RE_ONLY_PUNCT = /^[\s \p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+$/u;
+    const RE_EDGE_PUNCT = /^[\s \p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+|[\s \p{P}\p{S}。．、，・！!？?：:；;（）()「」『』【】《》〈〉［］\[\]｛｝{}〜～—–\-‐‑‒―…‥‧·／/\\|｜"'’“”`~@#$%^&*+=<>]+$/gu;
 
     function stripEdgePunct(str) {
       return String(str || '').replace(RE_EDGE_PUNCT, '').trim();
@@ -1999,7 +2060,7 @@ let dictData = [];
       const chars = [...q];
       let i = 0;
       while (i < chars.length) {
-        if (RE_SEG_PUNCT.test(chars[i]) || /^[\s　]$/.test(chars[i])) { i++; continue; }
+        if (RE_SEG_PUNCT.test(chars[i]) || /^[\s ]$/.test(chars[i])) { i++; continue; }
         let matchedLen = 0;
         const maxLen = Math.min(12, chars.length - i);
         for (let len = maxLen; len >= 1; len--) {
@@ -2026,7 +2087,7 @@ let dictData = [];
 
       const idx = getSegIndex();
       const len = nonSpaceLength(q);
-      const compactQ = q.replace(/[\s　]+/g, '');
+      const compactQ = q.replace(/[\s ]+/g, '');
       const hasPunct = RE_SEG_PUNCT.test(compactQ);
       const hasOrEndsParticle = RE_HAS_PARTICLE.test(compactQ) || RE_ENDS_PARTICLE.test(compactQ);
 
@@ -2035,15 +2096,24 @@ let dictData = [];
         return isFullyCoveredByJpLexicon(compactQ, idx);
       }
 
+      const hira = toHiragana(compactQ);
+      const isKnownWholeCommonWord =
+        SEG_WHOLE_WORDS.has(compactQ) ||
+        SEG_WHOLE_WORDS.has(hira) ||
+        COPULA_TOKENS.has(compactQ) ||
+        COPULA_TOKENS.has(hira) ||
+        idx.commonForms.has(compactQ) ||
+        idx.commonForms.has(hira) ||
+        isSingleCommonInflection(compactQ, idx) ||
+        (hasHanzi(compactQ) && idx.commonKanjiExact.has(compactQ));
+
+      if (!hasPunct && isKnownWholeCommonWord) {
+        if (FORCE_SPLIT_PHRASES.has(compactQ) || FORCE_SPLIT_PHRASES.has(hira)) return true;
+        return false;
+      }
+
       if (len <= 6 && !hasPunct) {
         if (!hasOrEndsParticle) return false;
-        const hira = toHiragana(compactQ);
-        if (FORCE_SPLIT_PHRASES.has(compactQ) || FORCE_SPLIT_PHRASES.has(hira)) return true;
-        if (SEG_WHOLE_WORDS.has(compactQ) || SEG_WHOLE_WORDS.has(hira)) return false;
-        if (COPULA_TOKENS.has(compactQ) || COPULA_TOKENS.has(hira)) return false;
-        if (idx.commonForms.has(compactQ) || idx.commonForms.has(hira)) return false;
-        if (isSingleCommonInflection(compactQ, idx)) return false;
-        if (hasHanzi(compactQ) && idx.commonKanjiExact.has(compactQ)) return false;
         return true;
       }
 
@@ -2106,13 +2176,13 @@ let dictData = [];
       let i = 0;
 
       while (i < chars.length) {
-        if (RE_SEG_PUNCT.test(chars[i]) || /^[\s　]$/.test(chars[i])) {
+        if (RE_SEG_PUNCT.test(chars[i]) || /^[\s ]$/.test(chars[i])) {
           i++;
           continue;
         }
 
         let spanEnd = i;
-        while (spanEnd < chars.length && !RE_SEG_PUNCT.test(chars[spanEnd]) && !/^[\s　]$/.test(chars[spanEnd])) spanEnd++;
+        while (spanEnd < chars.length && !RE_SEG_PUNCT.test(chars[spanEnd]) && !/^[\s ]$/.test(chars[spanEnd])) spanEnd++;
 
         let matched = null;
         const maxLen = Math.min(12, spanEnd - i);
@@ -2296,10 +2366,10 @@ let dictData = [];
         return;
       }
       try {
-        const cacheKey = `v2:${q}`;
+        const cacheKey = `v4:${q}`;
         let aiRes = aiSegmentCache.get(cacheKey);
         if (!aiRes) {
-          aiRes = await callAiWorker({ mode: 'segment', text: q }, 12000);
+          aiRes = await callAiWorker({ mode: 'segment', text: q }, 20000);
           aiSegmentCache.set(cacheKey, aiRes);
         }
         if (token !== searchToken || !currentSearchOutput.isSegmented || currentSearchOutput.rawQuery !== q) return;
@@ -2329,22 +2399,44 @@ let dictData = [];
           };
         }).filter(t => t.text && !isPunctOnlyToken(t.text));
 
-        const cultureNotes = Array.isArray(aiRes.culture_notes)
-          ? aiRes.culture_notes
-              .map(n => ({
-                term: String((n && n.term) || '').trim(),
-                category: String((n && n.category) || '文化典故').trim(),
-                explanation: String((n && n.explanation) || '').trim()
+        const grammarNotes = Array.isArray(aiRes.grammar_notes)
+          ? aiRes.grammar_notes
+              .map(g => ({
+                pattern: String((g && g.pattern) || '').trim(),
+                highlight: String((g && g.highlight) || '').trim(),
+                structure: String((g && g.structure) || '').trim(),
+                explanation: String((g && g.explanation) || '').trim(),
+                example: String((g && g.example) || '').trim()
               }))
-              .filter(n => n.term && n.explanation)
+              .filter(g => g.pattern && (g.explanation || g.structure))
           : [];
 
-        if (mappedTokens.length > 0 || aiRes.translation || cultureNotes.length > 0) {
+        const verbPairs = Array.isArray(aiRes.verb_pairs)
+          ? aiRes.verb_pairs
+              .map(vp => ({
+                pairTitle: String((vp && vp.pairTitle) || '').trim(),
+                items: Array.isArray(vp && vp.items)
+                  ? vp.items
+                      .map(it => ({
+                        word: String((it && it.word) || '').trim(),
+                        pos: String((it && it.pos) || '').trim(),
+                        meaning: String((it && it.meaning) || '').trim(),
+                        example: String((it && it.example) || '').trim()
+                      }))
+                      .filter(it => it.word && (it.meaning || it.pos))
+                  : []
+              }))
+              .filter(vp => vp.pairTitle || vp.items.length > 0)
+          : [];
+
+        if (mappedTokens.length > 0 || aiRes.translation || grammarNotes.length > 0 || verbPairs.length > 0) {
           currentSearchOutput.aiData = {
             translation: aiRes.translation || '',
+            contextNote: String(aiRes.context_note || '').trim(),
             reading: aiRes.reading || '',
             tokens: mappedTokens.length > 0 ? mappedTokens : currentSearchOutput.localTokens,
-            cultureNotes
+            grammarNotes,
+            verbPairs
           };
           currentSearchOutput.aiState = 'ready';
           currentSearchOutput.aiError = '';
@@ -2411,6 +2503,7 @@ let dictData = [];
       const sentenceZh = isAiActive
         ? (out.aiData.translation || '')
         : (fallbackTr && fallbackTr.state === 'done' ? fallbackTr.text : '');
+      const sentenceContextNote = isAiActive ? (out.aiData.contextNote || '') : '';
       const sentenceReading = isAiActive ? (out.aiData.reading || '') : '';
       const engineLabel = isAiActive
         ? 'Gemini AI'
@@ -2421,6 +2514,8 @@ let dictData = [];
       if (sentenceZh || sentenceReading || (fallbackTr && fallbackTr.state === 'loading')) {
         const trCard = document.createElement('article');
         trCard.className = 'word-card';
+        trCard.setAttribute('data-seg-section', 'translation');
+        trCard.setAttribute('data-seg-title', '整句翻譯');
         trCard.style.cssText = 'margin-bottom:14px;border-left:3.5px solid var(--accent);';
         trCard.innerHTML = `
           <div class="card-header${sentenceZh ? ' has-below' : ''}">
@@ -2440,6 +2535,9 @@ let dictData = [];
           ${sentenceZh
             ? `<div class="seg-card-gloss">${escapeHtml(sentenceZh)}</div>`
             : `<div class="seg-card-gloss" style="color:var(--text-muted);">正在取得整句繁體中文翻譯…</div>`}
+          ${sentenceContextNote
+            ? `<div class="ai-context-note">${escapeHtml(sentenceContextNote)}</div>`
+            : ''}
         `;
         const spBtn = trCard.querySelector('[data-speak]');
         if (spBtn) spBtn.addEventListener('click', () => speakJapanese(out.rawQuery));
@@ -2600,39 +2698,84 @@ let dictData = [];
 
       wrap.appendChild(list);
 
-      const cultureNotes = isAiActive && Array.isArray(out.aiData.cultureNotes)
-        ? out.aiData.cultureNotes
+      const grammarNotes = isAiActive && Array.isArray(out.aiData.grammarNotes)
+        ? out.aiData.grammarNotes
         : [];
+      if (grammarNotes.length > 0) {
+        const gramWrap = document.createElement('section');
+        gramWrap.className = 'grammar-notes-section';
+        gramWrap.setAttribute('data-seg-section', 'grammar');
+        gramWrap.setAttribute('data-seg-title', '文法解析');
 
-      if (cultureNotes.length > 0) {
-        const cultWrap = document.createElement('section');
-        cultWrap.className = 'culture-notes-section';
-        cultWrap.style.cssText = 'margin-top:16px;display:flex;flex-direction:column;gap:10px;';
+        const gramTitle = document.createElement('div');
+        gramTitle.className = 'group-label';
+        gramTitle.textContent = '文法解析';
+        gramWrap.appendChild(gramTitle);
 
-        const cultTitle = document.createElement('div');
-        cultTitle.className = 'group-label';
-        cultTitle.textContent = '俗諺・歷史・食物典故';
-        cultWrap.appendChild(cultTitle);
-
-        cultureNotes.forEach(note => {
-          const cCard = document.createElement('article');
-          cCard.className = 'word-card culture-note-card';
-          cCard.style.cssText = 'border-left:3.5px solid #B45309;';
-          cCard.innerHTML = `
-            <div class="card-header has-below">
-              <div class="word-title-group">
-                <div class="kanji-main culture-note-title" style="font-size:1.05rem;">
-                  <span>${escapeHtml(note.term)}</span>
-                  <span class="pos-tag culture-note-badge">${escapeHtml(note.category)}</span>
-                </div>
-              </div>
+        grammarNotes.forEach(note => {
+          const gCard = document.createElement('article');
+          gCard.className = 'word-card grammar-note-card';
+          gCard.innerHTML = `
+            <div class="grammar-note-head">
+              <span class="grammar-pattern">${escapeHtml(note.pattern)}</span>
+              ${note.highlight ? `<span class="pos-tag">${escapeHtml(note.highlight)}</span>` : ''}
             </div>
-            <div class="seg-card-gloss culture-note-body">${escapeHtml(note.explanation)}</div>
+            ${note.structure ? `<div class="grammar-structure">${escapeHtml(note.structure)}</div>` : ''}
+            ${note.explanation ? `<div class="seg-card-gloss">${escapeHtml(note.explanation)}</div>` : ''}
+            ${note.example ? `<div class="example-box grammar-example">${escapeHtml(note.example)}</div>` : ''}
           `;
-          cultWrap.appendChild(cCard);
+          gramWrap.appendChild(gCard);
         });
 
-        wrap.appendChild(cultWrap);
+        wrap.appendChild(gramWrap);
+      }
+
+      const verbPairs = isAiActive && Array.isArray(out.aiData.verbPairs)
+        ? out.aiData.verbPairs
+        : [];
+      if (verbPairs.length > 0) {
+        const pairWrap = document.createElement('section');
+        pairWrap.className = 'verb-pairs-section';
+        pairWrap.setAttribute('data-seg-section', 'verbs');
+        pairWrap.setAttribute('data-seg-title', '自他動詞對照');
+
+        const pairTitleEl = document.createElement('div');
+        pairTitleEl.className = 'group-label';
+        pairTitleEl.textContent = '自他動詞對照';
+        pairWrap.appendChild(pairTitleEl);
+
+        verbPairs.forEach(vp => {
+          const pCard = document.createElement('article');
+          pCard.className = 'word-card verb-pair-card';
+          const rowsHtml = (vp.items || []).map(it => `
+            <tr>
+              <td class="vp-col-word">${escapeHtml(it.word)}</td>
+              <td class="vp-col-pos"><span class="pos-tag">${escapeHtml(it.pos)}</span></td>
+              <td class="vp-col-meaning">${escapeHtml(it.meaning)}</td>
+              <td class="vp-col-ex">${escapeHtml(it.example)}</td>
+            </tr>
+          `).join('');
+
+          pCard.innerHTML = `
+            ${vp.pairTitle ? `<div class="verb-pair-title">${escapeHtml(vp.pairTitle)}</div>` : ''}
+            <div class="verb-pair-table-wrap">
+              <table class="verb-pair-table">
+                <thead>
+                  <tr>
+                    <th>單字</th>
+                    <th>詞性</th>
+                    <th>意思</th>
+                    <th>例句</th>
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+          `;
+          pairWrap.appendChild(pCard);
+        });
+
+        wrap.appendChild(pairWrap);
       }
 
       if (out.exactFullMatches && out.exactFullMatches.length > 0) {
@@ -2810,6 +2953,35 @@ let dictData = [];
         // 英文為主；同時可能是羅馬拼音，提供切換連結
         en.alt = { label: `也可能是羅馬拼音「${kana}」→ 點此改搜日文讀音`, opts: { forceRomaji: true } };
         return en;
+      }
+
+      // 2.8 中文整句輸入 -> 先查詞庫；若詞庫查無結果，交由 AI 翻成日文整句再斷詞產生下方字卡
+      if (isChineseSentenceQuery(q)) {
+        const jpExact = [];
+        const jpPartial = [];
+        for (let i = 0; i < dictData.length; i++) {
+          const entry = dictData[i];
+          const kanjis = entry[0];
+          if (kanjis.includes(q)) jpExact.push(entry);
+          else if (jpPartial.length < 30 && kanjis.some(k => k.includes(q))) jpPartial.push(entry);
+        }
+        const combined = [...rankByCoreScore(jpExact, [q]), ...jpPartial].slice(0, 30);
+        if (combined.length > 0) {
+          return {
+            mode: 'jp',
+            badge: '命中詞庫',
+            note: `詞庫中直接收錄「${q}」`,
+            results: combined
+          };
+        }
+        return {
+          mode: 'zh',
+          badge: '中文整句 → AI 日文拆詞',
+          note: `詞庫查無「${q}」，正在由 AI 翻譯為日文並拆解詞彙…`,
+          results: [],
+          needZhSentenceAi: true,
+          zhQuery: q
+        };
       }
 
       // 3. 漢字輸入 -> 若含分號／頓號多詞義（如「冰；冷；冷淡；凊」），優先做多義項交集比對；否則先查日文漢字再走中文橋接
@@ -3280,18 +3452,26 @@ let dictData = [];
       return { title, rows };
     }
 
-    // ===== 詳細頁 =====
+    // ===== 詳細頁（支援多層詞條跳轉返回堆疊）=====
     let currentDetail = null;
     let savedScrollY = 0;
-
     let currentDetailInf = null;
+    let detailStack = [];
 
     function openDetail(entry, inf) {
       recordStudiedWord(entry);
-      savedScrollY = window.scrollY;
+      if (currentDetail) {
+        detailStack.push({
+          entry: currentDetail,
+          inf: currentDetailInf,
+          scrollY: window.scrollY
+        });
+      } else {
+        savedScrollY = window.scrollY;
+      }
       currentDetail = entry;
       currentDetailInf = inf || null;
-      try { history.pushState({ detail: true }, ''); } catch (e) {}
+      try { history.pushState({ detail: true, depth: detailStack.length }, ''); } catch (e) {}
       renderCurrentView();
       window.scrollTo(0, 0);
     }
@@ -3300,15 +3480,28 @@ let dictData = [];
       if (!currentDetail) return false;
       currentDetail = null;
       currentDetailInf = null;
+      detailStack = [];
       try { if (history.state && history.state.detail) history.replaceState(null, ''); } catch (e) {}
       return true;
     }
 
+    function stepBackDetail() {
+      if (detailStack.length > 0) {
+        const prev = detailStack.pop();
+        currentDetail = prev.entry;
+        currentDetailInf = prev.inf;
+        renderCurrentView();
+        window.scrollTo(0, prev.scrollY || 0);
+        return;
+      }
+      closeDetail();
+      renderCurrentView();
+      window.scrollTo(0, savedScrollY);
+    }
+
     window.addEventListener('popstate', () => {
       if (currentDetail) {
-        currentDetail = null;
-        renderCurrentView();
-        window.scrollTo(0, savedScrollY);
+        stepBackDetail();
       }
     });
 
@@ -3402,6 +3595,48 @@ let dictData = [];
         return `<div class="sense-item"><span class="sense-no">${idx + 1}</span>${pos}<span class="en-gloss">${escapeHtml(sn.g.join('; '))}</span>${exs}</div>`;
       }).join('');
 
+      const synAntStore = (typeof window !== 'undefined' && window.YUKIYOSEI_SYN_ANT && typeof window.YUKIYOSEI_SYN_ANT === 'object')
+        ? window.YUKIYOSEI_SYN_ANT
+        : {};
+      const lookupKeys = [...new Set([primaryWord, primaryReading, ...(kanjis || []), ...(kanas || [])].filter(Boolean))];
+      let matchedSynAnt = null;
+      for (const k of lookupKeys) {
+        if (synAntStore[k] && typeof synAntStore[k] === 'object') {
+          matchedSynAnt = synAntStore[k];
+          break;
+        }
+      }
+      const synList = Array.isArray(matchedSynAnt && matchedSynAnt.syn)
+        ? [...new Set(matchedSynAnt.syn.map(s => String(s || '').trim()).filter(Boolean))]
+        : [];
+      const antList = Array.isArray(matchedSynAnt && matchedSynAnt.ant)
+        ? [...new Set(matchedSynAnt.ant.map(a => String(a || '').trim()).filter(Boolean))]
+        : [];
+
+      const renderSynAntChips = (words, typeClass) => words.map(w =>
+        `<button type="button" class="syn-ant-link ${typeClass}" data-lookup-word="${escapeHtml(w)}">${escapeHtml(w)}</button>`
+      ).join('');
+
+      let synAntHtml = '';
+      if (synList.length > 0 || antList.length > 0) {
+        synAntHtml = `
+          <section class="detail-section">
+            <h3 class="detail-h">相似詞與反義詞</h3>
+            <div class="word-card syn-ant-card">
+              ${synList.length > 0 ? `
+                <div>
+                  <div class="forms-label syn-ant-label">相似詞（類義語）</div>
+                  <div class="syn-ant-list">${renderSynAntChips(synList, 'is-syn')}</div>
+                </div>` : ''}
+              ${antList.length > 0 ? `
+                <div>
+                  <div class="forms-label syn-ant-label">反義詞（對義語）</div>
+                  <div class="syn-ant-list">${renderSynAntChips(antList, 'is-ant')}</div>
+                </div>` : ''}
+            </div>
+          </section>`;
+      }
+
       const conj = buildConjugation(entry);
       const hitVariants = inf ? kanaVariants(inf.surface) : [];
       const isHitRow = r => hitVariants.length > 0 && (hitVariants.includes(r.written) || hitVariants.includes(r.reading));
@@ -3460,12 +3695,29 @@ let dictData = [];
           <h3 class="detail-h">釋義與例句</h3>
           <div class="senses-list detail-senses">${sensesHtml}</div>
         </section>
+        ${synAntHtml}
         ${conjHtml}
       `;
 
+      page.querySelectorAll('[data-lookup-word]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const targetWord = btn.getAttribute('data-lookup-word');
+          if (!targetWord) return;
+          const exactEntry = Array.isArray(dictData)
+            ? dictData.find(e => (e[0] && e[0].includes(targetWord)) || (e[1] && e[1].includes(targetWord)))
+            : null;
+          if (exactEntry) {
+            openDetail(exactEntry, null);
+          } else {
+            searchInput.value = targetWord;
+            performSearch(targetWord, true);
+          }
+        });
+      });
+
       page.querySelector('#detailBack').addEventListener('click', () => {
         if (history.state && history.state.detail) history.back();
-        else { closeDetail(); renderCurrentView(); window.scrollTo(0, savedScrollY); }
+        else stepBackDetail();
       });
       page.querySelector('#detailFav').addEventListener('click', () => toggleFavorite(entry));
       const jump = page.querySelector('#hitJump');
@@ -3591,8 +3843,8 @@ let dictData = [];
 
     function updateCounts() {
       if (favCountEl) {
-        favCountEl.textContent = favorites.length;
-        favCountEl.style.display = favorites.length ? '' : 'none';
+        favCountEl.textContent = '';
+        favCountEl.style.display = 'none';
       }
       if (histCountEl) {
         histCountEl.style.display = 'none';
@@ -3646,7 +3898,7 @@ let dictData = [];
         const inf = notes && notes.get(entry);
         if (inf) {
           const chain = inf.path.slice().reverse().join(' → ');
-          inflHtml = `<div class="infl-note"><strong>${escapeHtml(inf.surface)}</strong> 是 <strong>${escapeHtml(inf.base)}</strong> 的變化形　${escapeHtml(chain)}${escapeHtml(inflectionExtra(inf))}</div>`;
+          inflHtml = `<div class="infl-note"><strong>${escapeHtml(inf.surface)}</strong> 是 <strong>${escapeHtml(inf.base)}</strong> 的變化形 ${escapeHtml(chain)}${escapeHtml(inflectionExtra(inf))}</div>`;
         }
 
         const entryId = getEntryId(entry);
@@ -3787,12 +4039,24 @@ let dictData = [];
           fetchAiSegmentation(q, token);
         }
       }
-      const needTranslate = isDbReady && q && !currentSearchOutput.isSegmented
-        && currentSearchOutput.results.length === 0
-        && currentSearchOutput.mode !== 'num' && currentSearchOutput.mode !== 'wild';
-      if (needTranslate) {
-        currentSearchOutput.translate = { state: 'loading', query: q };
-        startTranslate(q, token);
+
+      if (isDbReady && q && currentSearchOutput.needZhSentenceAi) {
+        currentSearchOutput.zhSentenceLoading = true;
+        clearTimeout(translateTimer);
+        translateZhSentenceToJpCards(q, token).catch(() => {
+          if (token !== searchToken) return;
+          currentSearchOutput.zhSentenceLoading = false;
+          currentSearchOutput.translate = { state: 'error', query: q };
+          if (currentTab === 'search') renderCurrentView();
+        });
+      } else {
+        const needTranslate = isDbReady && q && !currentSearchOutput.isSegmented
+          && currentSearchOutput.results.length === 0
+          && currentSearchOutput.mode !== 'num' && currentSearchOutput.mode !== 'wild';
+        if (needTranslate) {
+          currentSearchOutput.translate = { state: 'loading', query: q };
+          startTranslate(q, token);
+        }
       }
 
       if (saveHist && q && (currentSearchOutput.isSegmented || currentSearchOutput.results.length > 0 || currentSearchOutput.mode === 'num')) {
@@ -3837,6 +4101,41 @@ let dictData = [];
       }
       switchTab('search');
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function clearClientCookies() {
+      try {
+        const cookies = document.cookie ? document.cookie.split(';') : [];
+        for (const rawCookie of cookies) {
+          const eqIdx = rawCookie.indexOf('=');
+          const name = (eqIdx >= 0 ? rawCookie.slice(0, eqIdx) : rawCookie).trim();
+          if (!name) continue;
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+        }
+      } catch (e) {}
+    }
+
+    async function clearCacheAndReloadLatest() {
+      if (isQuizLocked()) return;
+      if (typeof flushCloudSyncPush === 'function') {
+        try { await flushCloudSyncPush(); } catch (e) {}
+      }
+      clearClientCookies();
+      if ('caches' in window) {
+        try {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        } catch (e) {}
+      }
+      if ('serviceWorker' in navigator) {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        } catch (e) {}
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set('_reload', String(Date.now()));
+      window.location.replace(url.toString());
     }
     function switchTab(tab) {
       if (tab !== 'quiz' && isQuizLocked()) return;
@@ -3910,9 +4209,16 @@ let dictData = [];
           rs.forEach(r => {
             if (r && !e[1].includes(r)) return;
             const key = w + '|' + r;
-            const k = [sc, e[2], e[3].length];
+            const hasZh = Array.isArray(e[4]) && e[4].some(z => z && !/[㐀-䶿]/.test(z)) ? 1 : 0;
+            const k = [sc, hasZh, e[2], e[3].length];
             const cur = best.get(key);
-            if (!cur || k[0] > cur.k[0] || (k[0] === cur.k[0] && (k[1] > cur.k[1] || (k[1] === cur.k[1] && k[2] > cur.k[2])))) {
+            const isBetter = (a, b) => {
+              for (let idx = 0; idx < a.length; idx++) {
+                if (a[idx] !== b[idx]) return a[idx] > b[idx];
+              }
+              return false;
+            };
+            if (!cur || isBetter(k, cur.k)) {
               best.set(key, { e, k });
             }
           });
@@ -4109,9 +4415,17 @@ let dictData = [];
         const wordHtml = kanjis.length > 0 && readingHira
           ? `<ruby>${escapeHtml(word)}<rt>${escapeHtml(readingHira)}</rt></ruby>`
           : escapeHtml(word);
-        const gloss = (zhs && zhs.length > 0)
-          ? zhs.slice(0, 3).join('、')
-          : (senses[0] ? senses[0].g.slice(0, 2).join('; ') : '');
+
+        const entryId = getEntryId(entry);
+        const cleanZhs = (zhs || []).filter(z => z && !/[㐀-䶿]/.test(z));
+        const cachedZh = aiWordZhCache.get(entryId);
+        const enFallback = (senses && senses[0] && senses[0].g)
+          ? senses[0].g.slice(0, 2).join('; ')
+          : '';
+
+        const gloss = cleanZhs.length > 0
+          ? cleanZhs.slice(0, 3).join('、')
+          : (cachedZh || (enFallback ? '中文翻譯中…' : ''));
         const fav = isFavorite(entry);
 
         const card = document.createElement('article');
@@ -4119,7 +4433,7 @@ let dictData = [];
         card.innerHTML = `
           <div class="daily-main">
             <div class="daily-word">${wordHtml}</div>
-            <div class="daily-gloss">${escapeHtml(gloss)}</div>
+            <div class="daily-gloss${cleanZhs.length === 0 && !cachedZh ? ' is-translating' : ''}">${escapeHtml(gloss)}</div>
           </div>
           <div class="card-actions">
             <button class="icon-btn copy-btn" type="button" title="複製單字" aria-label="複製單字" data-copy="${escapeHtml(word)}">${COPY_SVG}</button>
@@ -4131,6 +4445,28 @@ let dictData = [];
             </button>
           </div>
         `;
+
+        if (cleanZhs.length === 0 && !cachedZh && enFallback && !card._autoZhStarted) {
+          card._autoZhStarted = true;
+          const enSource = senses[0].g.slice(0, 3).join('; ');
+          translateText(enSource, 'en', 'zh-TW', word, false)
+            .then(tr => {
+              if (tr && tr.text) {
+                aiWordZhCache.set(entryId, tr.text);
+                if (!currentDetail && currentTab === 'search' && !searchInput.value.trim()) {
+                  renderCurrentView();
+                }
+              } else {
+                const glossEl = card.querySelector('.daily-gloss');
+                if (glossEl) glossEl.textContent = enFallback;
+              }
+            })
+            .catch(() => {
+              const glossEl = card.querySelector('.daily-gloss');
+              if (glossEl) glossEl.textContent = enFallback;
+            });
+        }
+
         card.addEventListener('click', (e) => {
           if (e.target.closest('button')) return;
           openDetail(entry, null);
@@ -4157,6 +4493,121 @@ let dictData = [];
         renderCurrentView();
       });
       return wrap;
+    }
+
+    let segScrollListenerAttached = false;
+    let segScrollTicking = false;
+
+    function getStickyOffsetHeight() {
+      const stickyEl = document.getElementById('stickyTop') || document.querySelector('.sticky-top');
+      return stickyEl ? stickyEl.offsetHeight + 12 : 140;
+    }
+
+    function scrollToSegSection(sectionKey) {
+      const target = mainContent.querySelector(`[data-seg-section="${sectionKey}"]`);
+      if (!target) return;
+      const top = target.getBoundingClientRect().top + window.scrollY - getStickyOffsetHeight();
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }
+
+    function syncSegHeaderOnScroll() {
+      const tabsEl = document.querySelector('.tabs');
+      const searchTabBtn = document.querySelector('.tab-btn[data-tab="search"]');
+      if (!tabsEl || !searchTabBtn) return;
+
+      const isAiSegSuccess = Boolean(
+        currentSearchOutput &&
+        currentSearchOutput.useAiSegment &&
+        currentSearchOutput.aiData
+      );
+
+      const isSegOverviewActive = Boolean(
+        currentTab === 'search' &&
+        !currentDetail &&
+        searchInput.value.trim() &&
+        currentSearchOutput &&
+        currentSearchOutput.isSegmented &&
+        currentSearchOutput.segViewMode === 'overview' &&
+        isAiSegSuccess
+      );
+
+      if (!isSegOverviewActive) {
+        tabsEl.classList.remove('is-seg-expanded');
+        const expandedNav = tabsEl.querySelector('.seg-section-nav');
+        if (expandedNav) expandedNav.remove();
+        if (searchTabBtn.dataset.origHtml) {
+          searchTabBtn.innerHTML = searchTabBtn.dataset.origHtml;
+          delete searchTabBtn.dataset.origHtml;
+        }
+        return;
+      }
+
+      const sectionEls = [...mainContent.querySelectorAll('[data-seg-section]')];
+      if (sectionEls.length === 0) return;
+
+      if (!searchTabBtn.dataset.origHtml) {
+        searchTabBtn.dataset.origHtml = searchTabBtn.innerHTML;
+      }
+
+      const triggerY = getStickyOffsetHeight() + 24;
+      let activeEl = sectionEls[0];
+      for (const el of sectionEls) {
+        if (el.getBoundingClientRect().top <= triggerY) {
+          activeEl = el;
+        } else {
+          break;
+        }
+      }
+      if ((window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 16)) {
+        activeEl = sectionEls[sectionEls.length - 1];
+      }
+
+      const activeKey = activeEl.getAttribute('data-seg-section');
+      const activeTitle = activeEl.getAttribute('data-seg-title') || '整句翻譯';
+
+      // 窄螢幕單一按鈕標題同步更新，不顯示原本的「搜尋結果 + 數字」
+      searchTabBtn.textContent = activeTitle;
+
+      // 寬螢幕（>= 640px）展開顯示目前實際存在的區塊分頁
+      let nav = tabsEl.querySelector('.seg-section-nav');
+      if (!nav) {
+        nav = document.createElement('div');
+        nav.className = 'seg-section-nav';
+        searchTabBtn.insertAdjacentElement('afterend', nav);
+      }
+
+      const sectionsSig = sectionEls.map(el => el.getAttribute('data-seg-section')).join(',');
+      if (nav.dataset.sig !== sectionsSig) {
+        nav.dataset.sig = sectionsSig;
+        nav.innerHTML = sectionEls.map(el => {
+          const key = el.getAttribute('data-seg-section');
+          const title = el.getAttribute('data-seg-title');
+          return `<button type="button" class="seg-nav-item" data-jump-seg="${escapeHtml(key)}">${escapeHtml(title)}</button>`;
+        }).join('');
+        nav.querySelectorAll('[data-jump-seg]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            scrollToSegSection(btn.getAttribute('data-jump-seg'));
+          });
+        });
+      }
+
+      nav.querySelectorAll('.seg-nav-item').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-jump-seg') === activeKey);
+      });
+
+      tabsEl.classList.add('is-seg-expanded');
+    }
+
+    if (!segScrollListenerAttached) {
+      segScrollListenerAttached = true;
+      window.addEventListener('scroll', () => {
+        if (segScrollTicking) return;
+        segScrollTicking = true;
+        requestAnimationFrame(() => {
+          segScrollTicking = false;
+          syncSegHeaderOnScroll();
+        });
+      }, { passive: true });
     }
 
     function renderCurrentView() {
@@ -4196,10 +4647,10 @@ let dictData = [];
             let bannerDesc = `已斷詞為 ${out.tokens.length} 個詞彙（點擊卡片看詳細，點擊上方膠囊查同音詞）`;
             let bannerTag = '<span class="mode-tag mode-jp">本地規則斷詞</span>';
             if (out.aiState === 'loading') {
-              bannerDesc = `先顯示本地斷詞（${out.tokens.length} 詞），✨ Gemini AI 正在背景分析整句與詞義…`;
+              bannerDesc = `先顯示本地斷詞（${out.tokens.length} 詞），✨ Gemini AI 正在分析整句、文法與詞彙…`;
               bannerTag = '<span class="mode-tag mode-ai">✨ AI 分析中…</span>';
             } else if (isAiOn) {
-              bannerDesc = `已由 Gemini AI 依上下文拆解為 ${out.tokens.length} 個詞彙（點右上「✨ AI 拆句 ✓」可切回本地斷詞）`;
+              bannerDesc = `已由 Gemini AI 完成拆解（點右上「✨ AI 拆句 ✓」可切回本地斷詞）`;
               bannerTag = '<span class="mode-tag mode-ai">✨ AI 語意拆解</span>';
             } else if (out.aiState === 'error' && out.aiError) {
               bannerDesc = `目前顯示本地規則斷詞與中文翻譯（AI 暫達上限，已自動切換免費翻譯）`;
@@ -4338,6 +4789,7 @@ let dictData = [];
           mainContent.appendChild(wrap);
         }
       }
+      syncSegHeaderOnScroll();
     }
 
     let debounceTimer = null;
@@ -4346,7 +4798,7 @@ let dictData = [];
       clearBtn.style.display = val ? 'flex' : 'none';
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        performSearch(val, true);
+        performSearch(val, false);
       }, 280);
     });
 
@@ -4672,40 +5124,113 @@ let dictData = [];
 
 
 
-    // 日翻中容錯比對：濾除括號補充說明，依分號／頓號拆解，兼容繁簡中文與同義橋接
+    function getZhSynonymGroups() {
+      if (typeof window !== 'undefined' && Array.isArray(window.YUKIYOSEI_ZH_SYNONYM_GROUPS)) {
+        return window.YUKIYOSEI_ZH_SYNONYM_GROUPS;
+      }
+      return [];
+    }
+
+    function expandZhSynonyms(normStr) {
+      const set = new Set([normStr]);
+      getZhSynonymGroups().forEach(group => {
+        if (!Array.isArray(group)) return;
+        const normedGroup = group.map(w => normalizeChineseForCompare(w));
+        if (normedGroup.includes(normStr)) {
+          normedGroup.forEach(w => set.add(w));
+        }
+      });
+      return set;
+    }
+
+    const JP2ZH_TAIL_CHARS = new Set(['的', '了', '啊', '呀', '喔', '哦', '呢', '吧', '嗎', '嘛']);
+
+    function stripJp2ZhTail(normStr) {
+      const chars = [...String(normStr || '')];
+      while (chars.length >= 2 && JP2ZH_TAIL_CHARS.has(chars[chars.length - 1])) {
+        chars.pop();
+      }
+      return chars.join('');
+    }
+
+    function expandJp2ZhVariants(normStr) {
+      const out = new Set();
+      const base = String(normStr || '').trim();
+      if (!base) return out;
+
+      const addWithSyn = (s) => {
+        if (!s) return;
+        out.add(s);
+        expandZhSynonyms(s).forEach(x => out.add(x));
+      };
+
+      addWithSyn(base);
+      const trimmedTail = stripJp2ZhTail(base);
+      if (trimmedTail && trimmedTail !== base) {
+        addWithSyn(trimmedTail);
+      }
+
+      for (const cur of [...out]) {
+        const chars = [...cur];
+        if (chars.length >= 2) {
+          out.add(chars.slice(0, -1).join(''));
+          out.add(chars.slice(1).join(''));
+        }
+      }
+      return out;
+    }
+
+    // 日翻中容錯比對：濾除括號補充說明，依分號／頓號拆解，兼容繁簡中文、語助詞／詞尾、同義詞群組與雙向橋接
     function checkJp2ZhAnswer(userInput, entry) {
       const rawTrimmed = String(userInput || '').trim();
       const userNorm = normalizeChineseForCompare(rawTrimmed);
       if (!userNorm) return false;
 
+      const userVariants = expandJp2ZhVariants(userNorm);
       const zhs = getCleanZhList(entry);
-      const candidates = [];
+      const candidates = new Set();
 
       zhs.forEach(raw => {
         const noParen = stripParens(raw);
         noParen.split(/[；;、／/，,｜|]+/).forEach(part => {
           const norm = normalizeChineseForCompare(part);
-          if (norm) candidates.push(norm);
+          if (norm) {
+            expandJp2ZhVariants(norm).forEach(v => candidates.add(v));
+          }
         });
       });
 
-      if (candidates.includes(userNorm)) return true;
+      for (const u of userVariants) {
+        if (candidates.has(u)) return true;
+      }
 
-      // 同義詞容錯：透過 zhBridge 比對使用者輸入的中文與詞條英文核心釋義是否相符
+      // 同義詞容錯：1) 使用者輸入的中文對應英文 ↔ 詞條英文釋義；2) 詞條英文釋義反查 zhBridge 中文是否含使用者輸入
       if (zhBridge && entry && Array.isArray(entry[3])) {
+        const entryEnSet = new Set();
+        for (const sn of entry[3]) {
+          for (const g of (sn.g || [])) {
+            const gClean = stripParens(g).toLowerCase().replace(/^to\s+/, '').trim();
+            if (gClean) entryEnSet.add(gClean);
+          }
+        }
+
         const bridgeHits = zhBridge[rawTrimmed] || [];
-        if (bridgeHits.length > 0) {
-          const userEnSet = new Set();
-          bridgeHits.forEach(def => {
-            def.split(';').forEach(p => {
-              const clean = stripParens(p).toLowerCase().replace(/^to\s+/, '').trim();
-              if (clean) userEnSet.add(clean);
-            });
-          });
-          for (const sn of entry[3]) {
-            for (const g of (sn.g || [])) {
-              const gClean = stripParens(g).toLowerCase().replace(/^to\s+/, '').trim();
-              if (gClean && userEnSet.has(gClean)) return true;
+        for (const def of bridgeHits) {
+          for (const p of def.split(';')) {
+            const clean = stripParens(p).toLowerCase().replace(/^to\s+/, '').trim();
+            if (clean && entryEnSet.has(clean)) return true;
+          }
+        }
+
+        if (entryEnSet.size > 0) {
+          for (const [zhKey, defs] of Object.entries(zhBridge)) {
+            const kNorm = normalizeChineseForCompare(zhKey);
+            if (!userVariants.has(kNorm)) continue;
+            for (const def of (defs || [])) {
+              for (const p of def.split(';')) {
+                const clean = stripParens(p).toLowerCase().replace(/^to\s+/, '').trim();
+                if (clean && entryEnSet.has(clean)) return true;
+              }
             }
           }
         }
@@ -4717,7 +5242,7 @@ let dictData = [];
     function normalizeJpForCompare(str) {
       return String(str || '')
         .trim()
-        .replace(/[\s　・･·〜～~]/g, '');
+        .replace(/[\s ・･·〜～~]/g, '');
     }
 
     // 中翻日容錯比對：符合「日文漢字寫法」或「平假名／片假名讀音」任一即算答對
@@ -5002,7 +5527,7 @@ let dictData = [];
           statusHtml = `
             <div class="quiz-result-status">
               <div class="quiz-status-line is-wrong">✗ 答錯了</div>
-              <div class="quiz-status-meta">你的答案：${escapeHtml(qItem.userAnswer || '')}　·　已加入錯題庫</div>
+              <div class="quiz-status-meta">你的答案：${escapeHtml(qItem.userAnswer || '')} · 已加入錯題庫</div>
             </div>
           `;
         }
@@ -5176,11 +5701,11 @@ let dictData = [];
 
     const brandHomeBtn = document.getElementById('brandHomeBtn');
     if (brandHomeBtn) {
-      brandHomeBtn.addEventListener('click', goHomeSearch);
+      brandHomeBtn.addEventListener('click', clearCacheAndReloadLatest);
       brandHomeBtn.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          goHomeSearch();
+          clearCacheAndReloadLatest();
         }
       });
     }
