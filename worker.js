@@ -82,7 +82,7 @@ async function callGeminiModels(apiKey, prompt, errors) {
     const maxAttempts = i === 0 ? 2 : 1;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const endpoint = `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
         const res = await fetchWithTimeout(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -187,25 +187,28 @@ async function callAiWithFallback(env, prompt) {
   }
 
   const groqHit = await callOpenAICompatible(
-    'groq',
-    '[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)',
-    env.GROQ_API_KEY,
-    GROQ_MODELS,
-    prompt,
-    errors
-  );
-  if (groqHit) return groqHit;
+  'groq',
+  'https://api.groq.com/openai/v1/chat/completions',
+  env.GROQ_API_KEY,
+  GROQ_MODELS,
+  prompt,
+  errors
+);
+if (groqHit) return groqHit;
 
-  const openRouterHit = await callOpenAICompatible(
-    'openrouter',
-    '[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)',
-    env.OPENROUTER_API_KEY,
-    OPENROUTER_MODELS,
-    prompt,
-    errors,
-    { 'HTTP-Referer': '[https://yahwd.github.io/jp-dic/](https://yahwd.github.io/jp-dic/)', 'X-Title': 'Yukiyosei JP Dict' }
-  );
-  if (openRouterHit) return openRouterHit;
+const openRouterHit = await callOpenAICompatible(
+  'openrouter',
+  'https://openrouter.ai/api/v1/chat/completions',
+  env.OPENROUTER_API_KEY,
+  OPENROUTER_MODELS,
+  prompt,
+  errors,
+  {
+    'HTTP-Referer': 'https://yahwd.github.io/jp-dic/',
+    'X-Title': 'Yukiyosei JP Dict'
+  }
+);
+if (openRouterHit) return openRouterHit;
 
   throw new Error(errors.join(' | ') || 'All AI providers failed');
 }

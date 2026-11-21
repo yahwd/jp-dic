@@ -430,6 +430,10 @@
       color: var(--text-primary);
       font-weight: 500;
     }
+    .zh-pill.ai-zh-pill:first-child {
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
 
     .senses-list {
       display: flex;
