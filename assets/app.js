@@ -684,7 +684,7 @@ let dictData = [];
     const histCountEl = document.getElementById('histCount');
 
     // 版本號需與 sw.js 的 CACHE_NAME 相同；更換 data 檔案後兩邊一起加 1
-    const CACHE_NAME = 'yukiyosei-v27';
+    const CACHE_NAME = 'yukiyosei-v29';
 
     function formatMB(bytes) {
       return (bytes / 1048576).toFixed(1) + ' MB';
@@ -4472,14 +4472,23 @@ let dictData = [];
         if (cleanZhs.length === 0 && !cachedZh && enFallback && !card._autoZhStarted) {
           card._autoZhStarted = true;
           const enSource = senses[0].g.slice(0, 3).join('; ');
-          translateText(enSource, 'en', 'zh-TW', word, false)
-            .then(tr => {
-              if (tr && tr.text) {
-                aiWordZhCache.set(entryId, tr.text);
+          getZhTranslationFromCloud(entryId)
+            .then(cloudZh => {
+              if (cloudZh) {
                 if (!currentDetail && currentTab === 'search' && !searchInput.value.trim()) {
                   renderCurrentView();
                 }
-              } else {
+                return null;
+              }
+              return translateText(enSource, 'en', 'zh-TW', word, false);
+            })
+            .then(tr => {
+              if (tr && tr.text) {
+                saveZhTranslationToCloud(entryId, tr.text, { word, engine: tr.engine });
+                if (!currentDetail && currentTab === 'search' && !searchInput.value.trim()) {
+                  renderCurrentView();
+                }
+              } else if (tr !== null) {
                 const glossEl = card.querySelector('.daily-gloss');
                 if (glossEl) glossEl.textContent = enFallback;
               }
