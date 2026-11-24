@@ -1,19 +1,20 @@
 /* 雪妖精の辭書 — Service Worker
  * 更換 data 檔案或大幅改版時，請同步把這裡與 assets/app.js 的 CACHE_NAME 版本號一起加 1。 */
-const CACHE_NAME = 'yukiyosei-v28';
+const CACHE_NAME = 'yukiyosei-v29';
 
 const SHELL = [
   './',
   './index.html',
   './assets/firebase-config.js',
   './assets/syn-ant.js',
+  './assets/trad-simp.js',
   './assets/quiz-synonyms.js',
   './assets/app.js',
   './assets/style.css',
-  './assets/firebase-config.js?v=28',
-  './assets/syn-ant.js?v=28',
-  './assets/app.js?v=28',
-  './assets/style.css?v=28',
+  './assets/firebase-config.js?v=29',
+  './assets/syn-ant.js?v=29',
+  './assets/app.js?v=29',
+  './assets/style.css?v=29',
   './manifest.webmanifest',
   './manifest.webmanifest?v=2',
   './icons/icon-192.png',

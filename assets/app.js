@@ -3,39 +3,9 @@ let dictData = [];
     let isDbReady = false;
 
     // 繁簡中文常用字對照表（確保日漢釋義比對兼容繁體與簡體中文）
-    const TRAD_SIMP_PAIRS = [
-      '學学','習习','語语','詞词','辭辞','書书','讀读','寫写','聽听','說说','話话','請请','謝谢',
-      '車车','電电','駅站','站站','飛飞','機机','場场','船船','鐵铁','線线','路路','地圖地图',
-      '買买','賣卖','錢钱','銀银','價价','貴贵','便便','免費免费','割引折扣','現金现金','領収書收据',
-      '飲饮','食食','飯饭','麵面','湯汤','魚鱼','鳥鸟','肉肉','菜菜','菓果','茶茶','酒酒','燒烧','揚げ炸',
-      '壽司寿司','拉麵拉面','味噌湯味噌汤','丼盖饭','便當便当','點心点心','甜點甜点','好吃美味',
-      '雪雪','雲云','風风','雨雨','晴晴','陰阴','霧雾','雷雷','氣气','溫温','冷冷','熱热','暖暖','凍冻',
-      '溫泉温泉','風呂浴池','湯船浴缸','旅館旅馆','飯店饭店','房間房间','鑰匙钥匙','預約预约','行李行李',
-      '護照护照','簽證签证','觀光观光','旅遊旅游','風景风景','櫻花樱花','紅葉红叶','寺廟寺庙','繪馬绘马',
-      '運動运动','健身健身','肌肉肌肉','體力体力','體重体重','練習练习','考試考试','問題问题','答案答案',
-      '時間时间','時时','分分','秒秒','今天今日','明天明日','昨天昨日','星期周','週周','年年','月月','日日',
-      '電話电话','電腦电脑','網路网络','手機手机','相機相机','照片照片','音樂音乐','電影电影','電視电视',
-      '醫院医院','醫生医生','藥药','感冒感冒','發燒发烧','頭痛头痛','肚子腹','身體身体','眼睛眼','耳朵耳',
-      '頭髮头发','臉脸','手手','腳脚','心心','愛爱','喜歡喜欢','討厭讨厌','高興高兴','快樂快乐','難過难过',
-      '生氣生气','害怕害怕','擔心担心','安心安心','危險危险','安全安全','方便方便','麻煩麻烦','簡單简单',
-      '困難困难','重要重要','特別特别','普通普通','一樣一样','不同不同','開始开始','結束结束','繼續继续',
-      '準備准备','決定决定','選擇选择','幫助帮助','幫忙帮忙','照顧照顾','介紹介绍','說明说明','確認确认',
-      '發現发现','發明发明','變化变化','發展发展','經驗经验','知識知识','文化文化','傳統传统','歷史历史',
-      '經濟经济','政治政治','社會社会','環境环境','自然自然','動物动物','植物植物','花花','草草','樹树',
-      '山山','川川','海海','河河','湖湖','島岛','國国','都市城市','鄉下乡下','公園公园','圖書館图书馆',
-      '銀行银行','郵局邮局','警察警察','學校学校','老師老师','學生学生','同學同学','朋友朋友','家人家人',
-      '父親父亲','母親母亲','哥哥兄','姊姊姐','弟弟弟','妹妹妹','丈夫丈夫','妻子妻子','孩子小孩','寶寶宝宝',
-      '男男','女女','大人大人','老人老人','年輕年轻','漂亮美丽','帥氣帅气','可愛可爱','溫柔温柔','親切亲切',
-      '認真认真','努力努力','聰明聪明','厲害厉害','糟糕糟糕','奇怪奇怪','安靜安静','熱鬧热闹','乾淨干净',
-      '髒脏','新新','舊旧','長长','短短','高高','矮矮','胖胖','瘦瘦','強强','弱弱','快快','慢慢','早早','晚晚',
-      '多多少','少少','大大小','小小','遠远','近近','左左','右右','前前','後后','裡里','外外','上上','下下',
-      '紅红','藍蓝','綠绿','黃黄','白白','黑黑','灰灰','粉紅粉红','紫色紫色','金色金色','銀色银色',
-      '門门','窗窗','桌子桌','椅子椅','床床','燈灯','鏡子镜子','傘伞','衣服衣','褲子裤子','鞋子鞋','帽子帽',
-      '眼鏡眼镜','手錶手表','包包包','錢包钱包','毛巾毛巾','肥皂肥皂','牙刷牙刷','衛生紙卫生纸','垃圾垃圾',
-      '開开','關关','進进','出出','來来','去去','回回','走走','跑跑','跳跳','站站','坐坐','睡睡','醒醒',
-      '看观','見见','聞闻','嚐尝','摸摸','拿取','放放','給给','收收','借借','還还','送送','接接','找寻',
-      '忘忘','記记','想思','知道知','懂理解','會能','做作','工作工作','休息休息','玩玩','唱唱','畫画'
-    ];
+    const TRAD_SIMP_PAIRS = Array.isArray(window.YUKIYOSEI_TRAD_SIMP_PAIRS)
+      ? window.YUKIYOSEI_TRAD_SIMP_PAIRS
+      : [];
 
     const TRAD_TO_SIMP_MAP = (() => {
       const m = new Map();
@@ -688,6 +658,9 @@ let dictData = [];
             updateAccountUi(null);
           }
         });
+        if (!auth.currentUser && currentTab === 'search') {
+          renderCurrentView();
+        }
       } catch (e) {
         // 離線或 CDN 無法載入時維持純本機 Local-First 運作
       }
@@ -976,7 +949,85 @@ let dictData = [];
     // ===== 線上翻譯與 Cloudflare Worker Gemini AI 備援 =====
     const translateCache = new Map();
     const aiWordZhCache = new Map();
+    const cloudZhFetchInFlight = new Map();
     const aiSegmentCache = new Map();
+    const LOCAL_ZH_CACHE_KEY = 'yukiyosei_zh_cache_v1';
+    const LOCAL_ZH_CACHE_MAX = 1500;
+
+    function loadLocalZhCacheMap() {
+      const raw = safeReadJson(LOCAL_ZH_CACHE_KEY, null);
+      if (raw && raw.items && typeof raw.items === 'object') {
+        Object.entries(raw.items).forEach(([id, zh]) => {
+          if (id && typeof zh === 'string' && zh.trim()) {
+            aiWordZhCache.set(id, zh.trim());
+          }
+        });
+      }
+    }
+
+    function persistLocalZhCacheMap() {
+      const entries = [...aiWordZhCache.entries()].slice(-LOCAL_ZH_CACHE_MAX);
+      const items = {};
+      entries.forEach(([k, v]) => { items[k] = v; });
+      safeWriteJson(LOCAL_ZH_CACHE_KEY, { version: 1, items });
+    }
+
+    loadLocalZhCacheMap();
+
+    function sanitizeCloudDocId(rawId) {
+      return encodeURIComponent(String(rawId || '')).replace(/%/g, '_').slice(0, 200);
+    }
+
+    async function getZhTranslationFromCloud(entryId) {
+      if (!entryId) return '';
+      if (aiWordZhCache.has(entryId)) return aiWordZhCache.get(entryId);
+      if (!firebaseRuntime || !firebaseRuntime.db || !firebaseRuntime.modules) return '';
+      if (cloudZhFetchInFlight.has(entryId)) return cloudZhFetchInFlight.get(entryId);
+
+      const promise = (async () => {
+        try {
+          const { db, modules } = firebaseRuntime;
+          const ref = modules.doc(db, 'zh_translations', sanitizeCloudDocId(entryId));
+          const snap = await modules.getDoc(ref);
+          if (snap.exists()) {
+            const data = snap.data() || {};
+            const zh = String(data.zh || '').trim();
+            if (zh) {
+              aiWordZhCache.set(entryId, zh);
+              persistLocalZhCacheMap();
+              return zh;
+            }
+          }
+        } catch (e) {
+        } finally {
+          cloudZhFetchInFlight.delete(entryId);
+        }
+        return '';
+      })();
+
+      cloudZhFetchInFlight.set(entryId, promise);
+      return promise;
+    }
+
+    async function saveZhTranslationToCloud(entryId, zh, meta = {}) {
+      const cleanZh = String(zh || '').trim().slice(0, 200);
+      if (!entryId || !cleanZh) return;
+      aiWordZhCache.set(entryId, cleanZh);
+      persistLocalZhCacheMap();
+      if (!firebaseRuntime || !firebaseRuntime.db || !firebaseRuntime.modules) return;
+      try {
+        const { db, modules } = firebaseRuntime;
+        const ref = modules.doc(db, 'zh_translations', sanitizeCloudDocId(entryId));
+        await modules.setDoc(ref, {
+          entryId,
+          zh: cleanZh,
+          word: String(meta.word || '').slice(0, 80),
+          engine: String(meta.engine || '').slice(0, 40),
+          updatedAt: Date.now()
+        }, { merge: true });
+      } catch (e) {
+      }
+    }
     const aiSegmentTokenCache = new Map();
     let searchToken = 0;
     let translateTimer = null;
@@ -3581,11 +3632,7 @@ let dictData = [];
       if (cleanDetailZhs.length > 0) {
         zhHtml = `<div class="zh-meanings">${cleanDetailZhs.map(z => `<span class="zh-pill">${escapeHtml(z)}</span>`).join('')}</div>`;
       } else if (detailCachedZh) {
-        zhHtml = `
-          <div class="zh-meanings" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span class="zh-pill ai-zh-pill">${escapeHtml(detailCachedZh)}</span>
-            ${hasDetailEn ? `<button type="button" class="fill-zh-btn" id="detailAiRefineBtn" title="用 Gemini AI 重新精修釋義">✨ AI 精修</button>` : ''}
-          </div>`;
+        zhHtml = `<div class="zh-meanings"><span class="zh-pill ai-zh-pill">${escapeHtml(detailCachedZh)}</span></div>`;
       } else if (hasDetailEn) {
         zhHtml = `<div class="zh-meanings"><span class="seg-tr-status">中文釋義翻譯中…</span></div>`;
       }
@@ -3738,34 +3785,21 @@ let dictData = [];
       if (cleanDetailZhs.length === 0 && !detailCachedZh && hasDetailEn && !entry._detailAutoZhStarted) {
         entry._detailAutoZhStarted = true;
         const enSource = senses[0].g.slice(0, 3).join('; ');
-        translateText(enSource, 'en', 'zh-TW', primaryWord, false)
+        getZhTranslationFromCloud(detailEntryId)
+          .then(cloudZh => {
+            if (cloudZh) {
+              if (currentDetail === entry) renderCurrentView();
+              return null;
+            }
+            return translateText(enSource, 'en', 'zh-TW', primaryWord, false);
+          })
           .then(tr => {
             if (tr && tr.text) {
-              aiWordZhCache.set(detailEntryId, tr.text);
+              saveZhTranslationToCloud(detailEntryId, tr.text, { word: primaryWord, engine: tr.engine });
               if (currentDetail === entry) renderCurrentView();
             }
           })
           .catch(() => {});
-      }
-
-      const detailRefineBtn = page.querySelector('#detailAiRefineBtn');
-      if (detailRefineBtn) {
-        detailRefineBtn.addEventListener('click', async () => {
-          if (detailRefineBtn.disabled) return;
-          detailRefineBtn.disabled = true;
-          detailRefineBtn.textContent = 'AI 精修中…';
-          const enSource = senses[0].g.slice(0, 3).join('; ');
-          try {
-            const tr = await translateText(enSource, 'en', 'zh-TW', primaryWord, true);
-            if (tr && tr.text) {
-              aiWordZhCache.set(detailEntryId, tr.text);
-              if (currentDetail === entry) renderCurrentView();
-              return;
-            }
-          } catch (err) {}
-          detailRefineBtn.disabled = false;
-          detailRefineBtn.textContent = '✨ AI 精修';
-        });
       }
       
       return page;
@@ -3917,11 +3951,7 @@ let dictData = [];
         if (cleanZhs.length > 0) {
           zhHtml = `<div class="zh-meanings zh-compact">${cleanZhs.map(z => `<span class="zh-pill">${escapeHtml(z)}</span>`).join('')}</div>`;
         } else if (cachedAiZh) {
-          zhHtml = `
-            <div class="zh-meanings zh-compact" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-              <span class="zh-pill ai-zh-pill">${escapeHtml(cachedAiZh)}</span>
-              ${hasEnGloss ? `<button type="button" class="fill-zh-btn" data-ai-refine="1" title="用 Gemini AI 重新精修釋義">✨ AI 精修</button>` : ''}
-            </div>`;
+          zhHtml = `<div class="zh-meanings zh-compact"><span class="zh-pill ai-zh-pill">${escapeHtml(cachedAiZh)}</span></div>`;
         } else if (hasEnGloss) {
           zhHtml = `
             <div class="card-gloss-fallback">
@@ -3968,35 +3998,21 @@ let dictData = [];
         if (cleanZhs.length === 0 && !cachedAiZh && hasEnGloss && !card._autoZhStarted) {
           card._autoZhStarted = true;
           const enSource = senses[0].g.slice(0, 3).join('; ');
-          translateText(enSource, 'en', 'zh-TW', primaryWord, false)
+          getZhTranslationFromCloud(entryId)
+            .then(cloudZh => {
+              if (cloudZh) {
+                if (currentTab === 'search' || currentTab === 'favorites') renderCurrentView();
+                return null;
+              }
+              return translateText(enSource, 'en', 'zh-TW', primaryWord, false);
+            })
             .then(tr => {
               if (tr && tr.text) {
-                aiWordZhCache.set(entryId, tr.text);
+                saveZhTranslationToCloud(entryId, tr.text, { word: primaryWord, engine: tr.engine });
                 if (currentTab === 'search' || currentTab === 'favorites') renderCurrentView();
               }
             })
             .catch(() => {});
-        }
-
-        const refineBtn = card.querySelector('[data-ai-refine]');
-        if (refineBtn) {
-          refineBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (refineBtn.disabled) return;
-            refineBtn.disabled = true;
-            refineBtn.textContent = 'AI 精修中…';
-            const enSource = senses[0].g.slice(0, 3).join('; ');
-            try {
-              const tr = await translateText(enSource, 'en', 'zh-TW', primaryWord, true);
-              if (tr && tr.text) {
-                aiWordZhCache.set(entryId, tr.text);
-                renderCurrentView();
-                return;
-              }
-            } catch (err) {}
-            refineBtn.disabled = false;
-            refineBtn.textContent = '✨ AI 精修';
-          });
         }
 
         card.querySelector('.fav-btn').addEventListener('click', () => toggleFavorite(entry));
