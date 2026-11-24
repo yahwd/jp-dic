@@ -658,7 +658,10 @@ let dictData = [];
             updateAccountUi(null);
           }
         });
-        if (!auth.currentUser && currentTab === 'search') {
+        if (currentTab === 'search') {
+          document.querySelectorAll('.word-card, .daily-card').forEach(el => {
+            delete el._autoZhStarted;
+          });
           renderCurrentView();
         }
       } catch (e) {
@@ -1113,12 +1116,20 @@ let dictData = [];
         }
       }
 
-      // 2. 一般單字自動補中文預設走免費 Google 翻譯（zh-TW）
+      // 2. 一般單字自動補中文預設走免費 Google 翻譯（zh-TW），失敗依序改走 MyMemory 與 Worker 備援
+      const cleanSrcText = stripParens(text).replace(/\s+/g, ' ').trim() || text;
       let result;
       try {
-        result = { text: await translateViaGoogle(text, from, to), engine: 'Google 翻譯' };
+        result = { text: await translateViaGoogle(cleanSrcText, from, to), engine: 'Google 翻譯' };
       } catch (e1) {
-        result = { text: await translateViaMyMemory(text, from, to), engine: 'MyMemory' };
+        try {
+          result = { text: await translateViaMyMemory(cleanSrcText, from, to), engine: 'MyMemory' };
+        } catch (e2) {
+          if (!getAiWorkerEndpoint()) throw e2;
+          const aiRes = await callAiWorker({ mode: 'translate', text: cleanSrcText, from, to, word: wordHint }, 20000);
+          if (!aiRes || !aiRes.translation) throw e2;
+          result = { text: aiRes.translation, reading: aiRes.reading || '', engine: 'Gemini AI' };
+        }
       }
       translateCache.set(key, result);
       return result;
