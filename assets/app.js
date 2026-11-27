@@ -1181,6 +1181,7 @@ let dictData = [];
           const res = await translateFallback(query);
           if (token !== searchToken) return;
           currentSearchOutput.translate = { state: 'done', query, ...res };
+          addHistory(query);
         } catch (err) {
           if (token !== searchToken) return;
           currentSearchOutput.translate = { state: 'error', query };
@@ -3529,6 +3530,8 @@ let dictData = [];
 
     function openDetail(entry, inf) {
       recordStudiedWord(entry);
+      const primaryWord = (entry && entry[0] && entry[0][0]) || (entry && entry[1] && entry[1][0]) || '';
+      if (primaryWord) addHistory(primaryWord);
       if (currentDetail) {
         detailStack.push({
           entry: currentDetail,
@@ -4093,7 +4096,8 @@ let dictData = [];
         }
       }
 
-      if (saveHist && q && (currentSearchOutput.isSegmented || currentSearchOutput.results.length > 0 || currentSearchOutput.mode === 'num')) {
+      const hasDirectResult = currentSearchOutput.isSegmented || currentSearchOutput.results.length > 0 || currentSearchOutput.mode === 'num';
+      if (q && hasDirectResult) {
         addHistory(q);
         if (!currentSearchOutput.isSegmented && currentSearchOutput.results.length > 0) {
           recordStudiedWord(currentSearchOutput.results[0]);
@@ -4816,7 +4820,6 @@ let dictData = [];
               ${historyList.map(h => `
                 <div class="history-item" data-q="${escapeHtml(h.q)}">
                   <span>${escapeHtml(h.q)}</span>
-                  <span class="history-time">${escapeHtml(h.time)}</span>
                 </div>
               `).join('')}
             </div>
